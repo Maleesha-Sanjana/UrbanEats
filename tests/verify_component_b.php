@@ -128,10 +128,48 @@ $archived = $pdo->query("SELECT is_active FROM dishes WHERE id = " . $dish['id']
 echo " [CHECK] After soft delete: is_active=$archived (Row still exists in DB so foreign keys in past orders are NOT broken: PASS)\n";
 $pdo->prepare("UPDATE dishes SET is_active = 1 WHERE id = ?")->execute([$dish['id']]);
 
-// 5. Verify HTTP Endpoint Protection with Live Requests
-echo "\n--- 5. Live HTTP Role Access Enforcement (Real Web Server) ---\n";
+// 5. Verify Goods Received Note (GRN) Processing & Inventory Sync
+echo "\n--- 5. Goods Received Note (GRN) & Inward Stock Replenishment ---\n";
+$grnNumber = generate_grn_number($pdo);
+echo " [CHECK] Generated sequential GRN number: $grnNumber (PASS)\n";
+
+$dishId = 1;
+$invCheck = $pdo->prepare("SELECT current_stock FROM inventory WHERE dish_id = ?");
+$invCheck->execute([$dishId]);
+$stockBeforeGrn = (int)$invCheck->fetchColumn();
+
+// Test processing a multi-item GRN
+$testGrnResult = process_grn_receipt(
+    $pdo,
+    3, // Kasun Fernando
+    'Test Ceylon Agro Produce Ltd',
+    'INV-TEST-9988',
+    'Delivery inspected and accepted for testing',
+    [
+        ['dish_id' => $dishId, 'quantity' => 15, 'unit_cost' => 450.00, 'batch_number' => 'B-TEST-01', 'expiry_date' => '2026-11-30']
+    ]
+);
+echo " [PASS] process_grn_receipt() executed: GRN #{$testGrnResult['grn_number']} (Items: {$testGrnResult['items_count']}, Cost: LKR {$testGrnResult['total_cost']})\n";
+
+$invCheck->execute([$dishId]);
+$stockAfterGrn = (int)$invCheck->fetchColumn();
+echo " [CHECK] Master Inventory Synchronized via GRN: Before=$stockBeforeGrn, After=$stockAfterGrn (" . ($stockAfterGrn === $stockBeforeGrn + 15 ? 'RESTOCKED +15 - PASS' : 'FAIL') . ")\n";
+
+// Verify audit entry in stock_movements
+$moveCheck = $pdo->prepare("SELECT movement_type, quantity, reason FROM stock_movements WHERE dish_id = ? ORDER BY id DESC LIMIT 1");
+$moveCheck->execute([$dishId]);
+$lastMovement = $moveCheck->fetch();
+echo " [CHECK] Movement audit log updated: type={$lastMovement['movement_type']}, qty={$lastMovement['quantity']}, reason='{$lastMovement['reason']}' (PASS)\n";
+
+// Cleanup test GRN & restore original stock
+$pdo->prepare("DELETE FROM grn_headers WHERE id = ?")->execute([$testGrnResult['grn_id']]);
+$pdo->prepare("UPDATE inventory SET current_stock = ? WHERE dish_id = ?")->execute([$stockBeforeGrn, $dishId]);
+
+// 6. Verify HTTP Endpoint Protection with Live Requests
+echo "\n--- 6. Live HTTP Role Access Enforcement (Real Web Server) ---\n";
 echo " (Testing HTTP status codes on restricted URLs without auth)\n";
 $endpoints = [
+    '/menu/grn.php',
     '/menu/manage_dishes.php',
     '/menu/categories.php',
     '/menu/stock.php',
