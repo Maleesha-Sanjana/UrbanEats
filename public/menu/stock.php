@@ -7,8 +7,9 @@
  * Key Responsibilities:
  * - Real-time kitchen inventory tracking with row-level locks
  * - Automated low-stock and depleted ingredient alerts
- * - Staff inventory adjustments (restock batches, kitchen wastage, physical counts)
- * - Audited stock movements history (linked with Component C checkout sales deductions)
+ * - Direct integration with official Goods Received Note (GRN) procurement system
+ * - Kitchen wastage recording (damage, spillage, expired prep) and physical audits
+ * - Audited stock movements history (linked with GRN inward receipts and Component C sales)
  */
 
 $currentPage = 'stock';
@@ -21,7 +22,7 @@ require_role(['kitchen_staff', 'admin']);
 $pdo = get_db_connection();
 $currentUserId = (int)$_SESSION['user_id'];
 
-// 1. Handle Stock Adjustments (Restock batches or Kitchen Wastage)
+// 1. Handle Kitchen Internal Stock Adjustments (Wastage / Physical Count Audits)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validate_csrf_or_fail();
 
@@ -33,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Server-side input validation
     if ($dishId <= 0 || $quantity <= 0 || $reason === '') {
         set_flash('error', 'Please provide a valid dish, positive unit quantity, and operational reason.');
-    } elseif (!in_array($movementType, ['restock', 'wastage', 'adjustment'], true)) {
+    } elseif (!in_array($movementType, ['wastage', 'adjustment', 'restock'], true)) {
         set_flash('error', 'Invalid movement type selected.');
     } else {
         // VIVA: Lock inventory row with FOR UPDATE inside a transaction to prevent race conditions
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lockInvStmt->execute([':id' => $dishId]);
             $currentStock = (int)$lockInvStmt->fetchColumn();
 
-            // Calculate positive or negative delta
+            // Calculate delta
             $stockDelta = ($movementType === 'restock') ? $quantity : -$quantity;
             $updatedStockBalance = $currentStock + $stockDelta;
 
@@ -134,17 +135,38 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
 ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
-    <!-- Page Header -->
+    <!-- Page Header & Action Bar -->
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
         <div>
             <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">
                 Component B: Inventory Control
             </span>
-            <h1 style="font-size: 2rem; margin-top: 0.25rem;">Live Stock & Wastage Dashboard</h1>
+            <h1 style="font-size: 2rem; margin-top: 0.25rem;">Live Stock & Inventory Dashboard</h1>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-primary" style="background: #16a34a;">
+                📋 Goods Received Notes (GRN)
+            </a>
+            <a href="<?= $appBase ?>/menu/manage_dishes.php" class="btn btn-secondary">🍲 Catalogue Management</a>
+            <a href="<?= $appBase ?>/orders/kitchen.php" class="btn btn-outline">🍳 Live Kitchen Queue</a>
+        </div>
+    </div>
+
+    <!-- Official GRN Replenishment Banner Callout -->
+    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #86efac; border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.25rem; box-shadow: var(--shadow-sm);">
+        <div style="display: flex; align-items: center; gap: 1rem; max-width: 780px;">
+            <span style="font-size: 2.5rem;">📋</span>
+            <div>
+                <h3 style="font-size: 1.15rem; color: #166534; margin: 0 0 0.25rem 0;">Formal Inward Deliveries (Goods Received Notes)</h3>
+                <p style="font-size: 0.875rem; color: #15803d; margin: 0; line-height: 1.5;">
+                    To maintain strict accounting compliance and stock traceability, all supplier deliveries must be received via an official <strong>Goods Received Note (GRN)</strong> documenting supplier invoices, unit purchase costs, and batch numbers.
+                </p>
+            </div>
         </div>
         <div style="display: flex; gap: 0.75rem;">
-            <a href="<?= $appBase ?>/menu/manage_dishes.php" class="btn btn-secondary">🍲 Catalogue Management</a>
-            <a href="<?= $appBase ?>/orders/kitchen.php" class="btn btn-primary">🍳 Live Kitchen Orders</a>
+            <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-primary" style="background: #16a34a;">
+                ➕ Create Goods Received Note (GRN)
+            </a>
         </div>
     </div>
 
@@ -158,7 +180,7 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
                         Attention Required: Low Stock & Depleted Items (<?= count($criticalStockDishes) ?>)
                     </h2>
                     <p style="font-size: 0.85rem; color: #b45309; margin: 0;">
-                        Dishes below their reorder threshold must be replenished promptly to prevent checkout failures.
+                        Dishes below their reorder threshold must be replenished via GRN promptly to prevent checkout failures.
                     </p>
                 </div>
             </div>
@@ -182,11 +204,17 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
         </div>
     <?php endif; ?>
 
-    <!-- Quick Stock Action Form (Restock or Wastage) -->
+    <!-- Kitchen Wastage & Internal Adjustment Form -->
     <div style="background: white; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; margin-bottom: 2.5rem; box-shadow: var(--shadow-sm);">
-        <h2 style="font-size: 1.25rem; margin-bottom: 1.25rem; color: var(--color-secondary);">
-            Record Stock Movement (Restock / Wastage)
-        </h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+            <div>
+                <h2 style="font-size: 1.25rem; margin: 0; color: var(--color-secondary);">Record Kitchen Wastage & Physical Audits</h2>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Record burned/spilled food wastage or physical stock take adjustments</span>
+            </div>
+            <a href="<?= $appBase ?>/menu/grn.php" style="font-size: 0.85rem; font-weight: 700; color: #16a34a;">
+                Need to add stock from supplier? Use GRN &rarr;
+            </a>
+        </div>
         
         <form action="<?= $appBase ?>/menu/stock.php" method="POST" class="form-row" style="align-items: flex-end;">
             <?= csrf_field() ?>
@@ -204,26 +232,26 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
-                <label for="movement_type" class="form-label">Movement Type <span class="required">*</span></label>
+                <label for="movement_type" class="form-label">Audit Type <span class="required">*</span></label>
                 <select id="movement_type" name="movement_type" class="form-control" required>
-                    <option value="restock">➕ Restock (Add to Inventory)</option>
-                    <option value="wastage">➖ Wastage (Damage / Spillage / Expired)</option>
-                    <option value="adjustment">🔄 Physical Count Adjustment</option>
+                    <option value="wastage">➖ Kitchen Wastage (Damage / Spillage / Expired)</option>
+                    <option value="adjustment">🔄 Physical Stock Count Discrepancy</option>
+                    <option value="restock">➕ Emergency Manual Restock</option>
                 </select>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
                 <label for="quantity" class="form-label">Quantity (Units) <span class="required">*</span></label>
-                <input type="number" min="1" id="quantity" name="quantity" class="form-control" placeholder="e.g. 25" required>
+                <input type="number" min="1" id="quantity" name="quantity" class="form-control" placeholder="e.g. 5" required>
             </div>
 
             <div class="form-group" style="margin-bottom: 0; flex: 1.5;">
                 <label for="reason" class="form-label">Operational Reason <span class="required">*</span></label>
-                <input type="text" id="reason" name="reason" class="form-control" placeholder="e.g. Morning kitchen prep batch / Spilled tray" required>
+                <input type="text" id="reason" name="reason" class="form-control" placeholder="e.g. Dropped tray during prep / End of day physical count" required>
             </div>
 
             <div>
-                <button type="submit" class="btn btn-primary">Save Adjustment</button>
+                <button type="submit" class="btn btn-secondary">Record Audit</button>
             </div>
         </form>
     </div>
@@ -240,7 +268,7 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
                 <tr>
                     <th>Dish Name</th>
                     <th>Category</th>
-                    <th>Price</th>
+                    <th>Customer Price</th>
                     <th>Current Stock</th>
                     <th>Reorder Level</th>
                     <th>Stock Health</th>
@@ -283,7 +311,7 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
     <div style="margin-top: 3rem; margin-bottom: 1rem;">
         <h2 style="font-size: 1.35rem; color: var(--color-secondary);">Recent Stock Movements History</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted);">
-            Audited trail of all manual restocks, automated checkout sales deductions, and wastage recordings.
+            Audited trail of inward supplier GRNs, automated checkout sales deductions, and kitchen wastage.
         </p>
     </div>
 
