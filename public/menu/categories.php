@@ -7,9 +7,10 @@
  * category creation, editing, and activation toggling.
  */
 
-$currentPage = 'dishes';
-$pageTitle = 'Manage Categories - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 require_role(['kitchen_staff', 'admin']);
 
@@ -80,6 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 }
+
+$currentPage = 'dishes';
+$pageTitle = 'Manage Categories - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 
 // Check if editing a category
 $editCat = null;

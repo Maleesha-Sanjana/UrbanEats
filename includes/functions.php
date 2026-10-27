@@ -11,6 +11,16 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/auth.php';
 
 /**
+ * Dynamically determine application base path
+ */
+function get_app_base(): string {
+    $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+    $publicPos = strpos($scriptPath, '/public');
+    return ($publicPos !== false) ? substr($scriptPath, 0, $publicPos + 7) : '/UrbanEats/public';
+}
+$appBase = get_app_base();
+
+/**
  * Escape string for safe HTML output (XSS prevention)
  */
 function e(?string $value): string {

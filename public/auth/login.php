@@ -8,9 +8,10 @@
  * session regeneration on success, and CSRF protection.
  */
 
-$currentPage = 'login';
-$pageTitle = 'Login - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 // If already logged in, redirect based on role
 if (is_logged_in()) {
@@ -64,6 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$currentPage = 'login';
+$pageTitle = 'Login - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="auth-wrapper">
