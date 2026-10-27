@@ -1,10 +1,16 @@
 <?php
 /**
  * UrbanEats Cloud Kitchen Platform
- * Component B: Public Menu Catalogue
+ * Component B: Menu Catalogue & Public Showcase
+ * Student 2: Denuka (Component B Owner)
  *
- * Implements category filtering, keyword search, price & name sorting (whitelisted),
- * dietary filters (vegetarian, spicy), and secure paginated database queries.
+ * Key Responsibilities:
+ * - Public menu browsing with real-time stock availability indicators
+ * - Parameterized keyword search (dishes & culinary descriptions)
+ * - Category slug filtering via active categories
+ * - Whitelisted SQL ORDER BY clauses (prevents SQL injection through sort input)
+ * - Dietary toggle filters (pure vegetarian, hot & spicy)
+ * - Server-side pagination with calculated offsets
  */
 
 $currentPage = 'menu';
@@ -13,49 +19,62 @@ require_once __DIR__ . '/../../includes/header.php';
 
 $pdo = get_db_connection();
 
-// 1. Fetch Categories for Filter Chips
-$catStmt = $pdo->query("SELECT * FROM categories WHERE is_active = 1 ORDER BY id ASC");
-$allCategories = $catStmt->fetchAll();
+// 1. Fetch all active categories for the filter pill navigation
+$categoryStmt = $pdo->query("
+    SELECT id, name, slug, description 
+    FROM categories 
+    WHERE is_active = 1 
+    ORDER BY id ASC
+");
+$allCategories = $categoryStmt->fetchAll();
 
-// 2. Validate and Whitelist GET Query Parameters
-$search = trim($_GET['search'] ?? '');
+// 2. Sanitize and validate incoming GET filter parameters
+$searchQuery  = trim($_GET['search'] ?? '');
 $categorySlug = trim($_GET['category'] ?? '');
-$sort = trim($_GET['sort'] ?? 'default');
-$dietary = trim($_GET['dietary'] ?? '');
-$page = max(1, (int)($_GET['page'] ?? 1));
-$perPage = 9;
-$offset = ($page - 1) * $perPage;
+$sortKey      = trim($_GET['sort'] ?? 'default');
+$dietaryType  = trim($_GET['dietary'] ?? '');
+$currentPageNum = max(1, (int)($_GET['page'] ?? 1));
+$itemsPerPage = 9;
+$offset = ($currentPageNum - 1) * $itemsPerPage;
 
-$whereClauses = ['d.is_active = 1'];
-$params = [];
+// Build dynamic WHERE clause using prepared statement parameter binding
+$whereConditions = ['d.is_active = 1'];
+$queryParams     = [];
 
-// Search filter
-if (!empty($search)) {
-    $whereClauses[] = "(d.name LIKE :search OR d.description LIKE :search)";
-    $params[':search'] = "%{$search}%";
+// Keyword search across dish name and culinary description
+if ($searchQuery !== '') {
+    $whereConditions[] = "(d.name LIKE :search_kw OR d.description LIKE :search_desc)";
+    $queryParams[':search_kw']   = '%' . $searchQuery . '%';
+    $queryParams[':search_desc'] = '%' . $searchQuery . '%';
 }
 
-// Category filter
-$selectedCategory = null;
-if (!empty($categorySlug)) {
-    $cStmt = $pdo->prepare("SELECT id, name, slug FROM categories WHERE slug = :slug AND is_active = 1 LIMIT 1");
-    $cStmt->execute([':slug' => $categorySlug]);
-    $selectedCategory = $cStmt->fetch();
-    if ($selectedCategory) {
-        $whereClauses[] = "d.category_id = :cat_id";
-        $params[':cat_id'] = $selectedCategory['id'];
+// Category filter by URL slug
+$currentCategory = null;
+if ($categorySlug !== '') {
+    $catQueryStmt = $pdo->prepare("
+        SELECT id, name, slug 
+        FROM categories 
+        WHERE slug = :slug AND is_active = 1 
+        LIMIT 1
+    ");
+    $catQueryStmt->execute([':slug' => $categorySlug]);
+    $currentCategory = $catQueryStmt->fetch();
+
+    if ($currentCategory) {
+        $whereConditions[] = "d.category_id = :selected_cat_id";
+        $queryParams[':selected_cat_id'] = (int)$currentCategory['id'];
     }
 }
 
-// Dietary filters
-if ($dietary === 'veg') {
-    $whereClauses[] = "d.is_vegetarian = 1";
-} elseif ($dietary === 'spicy') {
-    $whereClauses[] = "d.is_spicy = 1";
+// Dietary preference filters
+if ($dietaryType === 'veg') {
+    $whereConditions[] = "d.is_vegetarian = 1";
+} elseif ($dietaryType === 'spicy') {
+    $whereConditions[] = "d.is_spicy = 1";
 }
 
-// Whitelist Order By Clause (Prevent SQL injection through sort parameter)
-$orderSql = match ($sort) {
+// Whitelist sorting parameters (VIVA: Never concatenate $_GET['sort'] directly into SQL!)
+$sortOrderBy = match ($sortKey) {
     'price_asc'  => 'd.price ASC',
     'price_desc' => 'd.price DESC',
     'name_asc'   => 'd.name ASC',
@@ -63,68 +82,77 @@ $orderSql = match ($sort) {
     default      => 'd.id ASC'
 };
 
-$whereSql = implode(' AND ', $whereClauses);
+$compiledWhereClause = implode(' AND ', $whereConditions);
 
-// Count Total Matching Dishes
-$countStmt = $pdo->prepare("
-    SELECT COUNT(*)
+// 3. Count total matching records for pagination math
+$countSql = "
+    SELECT COUNT(*) 
     FROM dishes d
     JOIN categories c ON d.category_id = c.id
-    WHERE $whereSql
-");
-$countStmt->execute($params);
-$totalDishes = (int)$countStmt->fetchColumn();
-$totalPages = max(1, (int)ceil($totalDishes / $perPage));
+    WHERE {$compiledWhereClause}
+";
+$countStmt = $pdo->prepare($countSql);
+$countStmt->execute($queryParams);
+$totalMatchingDishes = (int)$countStmt->fetchColumn();
+$totalPageCount = max(1, (int)ceil($totalMatchingDishes / $itemsPerPage));
 
-// Query Paginated Dishes
-$dishQuery = "
-    SELECT d.*, c.name AS category_name, c.slug AS category_slug,
+// 4. Retrieve paginated dish dataset joined with categories & inventory stock
+$paginatedDishesSql = "
+    SELECT d.id, d.category_id, d.name, d.description, d.price, 
+           d.image_url, d.is_spicy, d.is_vegetarian, d.is_active,
+           c.name AS category_name, c.slug AS category_slug,
            COALESCE(i.current_stock, 0) AS current_stock
     FROM dishes d
     JOIN categories c ON d.category_id = c.id
     LEFT JOIN inventory i ON d.id = i.dish_id
-    WHERE $whereSql
-    ORDER BY $orderSql
-    LIMIT :limit OFFSET :offset
+    WHERE {$compiledWhereClause}
+    ORDER BY {$sortOrderBy}
+    LIMIT :page_limit OFFSET :page_offset
 ";
 
-$stmt = $pdo->prepare($dishQuery);
-foreach ($params as $k => $v) {
-    $stmt->bindValue($k, $v);
+$dishesStmt = $pdo->prepare($paginatedDishesSql);
+
+// Bind search & category criteria
+foreach ($queryParams as $paramKey => $paramValue) {
+    $dishesStmt->bindValue($paramKey, $paramValue);
 }
-$stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
-$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmt->execute();
-$dishes = $stmt->fetchAll();
+
+// Bind integer parameters explicitly for LIMIT/OFFSET
+$dishesStmt->bindValue(':page_limit', $itemsPerPage, PDO::PARAM_INT);
+$dishesStmt->bindValue(':page_offset', $offset, PDO::PARAM_INT);
+$dishesStmt->execute();
+$dishes = $dishesStmt->fetchAll();
 ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
-    <!-- Page Header & Title -->
+    <!-- Page Title & Header Info -->
     <div style="margin-bottom: 2rem;">
-        <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">Component B: Cloud Kitchen Catalogue</span>
+        <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">
+            Component B: Cloud Kitchen Catalogue
+        </span>
         <h1 style="font-size: 2.25rem; margin-top: 0.25rem;">
-            <?= $selectedCategory ? e($selectedCategory['name']) : 'Explore Our Full Menu' ?>
+            <?= $currentCategory ? e($currentCategory['name']) : 'Explore Our Full Menu' ?>
         </h1>
         <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 0.25rem;">
-            Prepared freshly with high-grade local ingredients. Filter, search, or sort dishes below.
+            Authentic Sri Lankan flavors cooked fresh per order. Filter by category, dietary choices, or price below.
         </p>
     </div>
 
-    <!-- Category Filter Pills / Carousel -->
+    <!-- Category Filter Pills Navigation -->
     <div class="category-pills">
-        <a href="<?= $appBase ?>/menu/list.php?<?= http_build_query(array_merge($_GET, ['category' => ''])) ?>" 
+        <a href="<?= $appBase ?>/menu/list.php?<?= http_build_query(array_merge($_GET, ['category' => '', 'page' => 1])) ?>" 
            class="category-pill <?= empty($categorySlug) ? 'active' : '' ?>">
-            All Categories (<?= $totalDishes ?>)
+            All Dishes (<?= $totalMatchingDishes ?>)
         </a>
-        <?php foreach ($allCategories as $cat): ?>
-            <a href="<?= $appBase ?>/menu/list.php?<?= http_build_query(array_merge($_GET, ['category' => $cat['slug'], 'page' => 1])) ?>" 
-               class="category-pill <?= $categorySlug === $cat['slug'] ? 'active' : '' ?>">
-                <?= e($cat['name']) ?>
+        <?php foreach ($allCategories as $category): ?>
+            <a href="<?= $appBase ?>/menu/list.php?<?= http_build_query(array_merge($_GET, ['category' => $category['slug'], 'page' => 1])) ?>" 
+               class="category-pill <?= $categorySlug === $category['slug'] ? 'active' : '' ?>">
+                <?= e($category['name']) ?>
             </a>
         <?php endforeach; ?>
     </div>
 
-    <!-- Search, Sort & Dietary Filters -->
+    <!-- Search, Sort & Dietary Filter Toolbar -->
     <div class="menu-controls">
         <form action="<?= $appBase ?>/menu/list.php" method="GET" class="filter-form">
             <?php if (!empty($categorySlug)): ?>
@@ -136,35 +164,35 @@ $dishes = $stmt->fetchAll();
                        name="search" 
                        class="form-control" 
                        placeholder="Search dishes (e.g. kottu, lamprais, biryani)..." 
-                       value="<?= e($search) ?>">
+                       value="<?= e($searchQuery) ?>">
             </div>
 
             <div class="filter-selects">
-                <!-- Sorting Whitelist -->
+                <!-- Whitelisted Sort Selector -->
                 <select name="sort" class="form-control" style="width: auto;">
-                    <option value="default" <?= $sort === 'default' ? 'selected' : '' ?>>Sort: Recommended</option>
-                    <option value="price_asc" <?= $sort === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
-                    <option value="price_desc" <?= $sort === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
-                    <option value="name_asc" <?= $sort === 'name_asc' ? 'selected' : '' ?>>Name: A to Z</option>
-                    <option value="name_desc" <?= $sort === 'name_desc' ? 'selected' : '' ?>>Name: Z to A</option>
+                    <option value="default" <?= $sortKey === 'default' ? 'selected' : '' ?>>Sort: Recommended</option>
+                    <option value="price_asc" <?= $sortKey === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
+                    <option value="price_desc" <?= $sortKey === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
+                    <option value="name_asc" <?= $sortKey === 'name_asc' ? 'selected' : '' ?>>Name: A to Z</option>
+                    <option value="name_desc" <?= $sortKey === 'name_desc' ? 'selected' : '' ?>>Name: Z to A</option>
                 </select>
 
-                <!-- Dietary Filter -->
+                <!-- Dietary Options Selector -->
                 <select name="dietary" class="form-control" style="width: auto;">
                     <option value="">Dietary: All</option>
-                    <option value="veg" <?= $dietary === 'veg' ? 'selected' : '' ?>>🌱 Vegetarian Only</option>
-                    <option value="spicy" <?= $dietary === 'spicy' ? 'selected' : '' ?>>🌶️ Spicy Only</option>
+                    <option value="veg" <?= $dietaryType === 'veg' ? 'selected' : '' ?>>🌱 Vegetarian Only</option>
+                    <option value="spicy" <?= $dietaryType === 'spicy' ? 'selected' : '' ?>>🌶️ Spicy Only</option>
                 </select>
 
                 <button type="submit" class="btn btn-secondary">Apply Filters</button>
-                <?php if (!empty($search) || !empty($categorySlug) || $sort !== 'default' || !empty($dietary)): ?>
+                <?php if (!empty($searchQuery) || !empty($categorySlug) || $sortKey !== 'default' || !empty($dietaryType)): ?>
                     <a href="<?= $appBase ?>/menu/list.php" class="btn btn-outline">Reset All</a>
                 <?php endif; ?>
             </div>
         </form>
     </div>
 
-    <!-- Dish Grid -->
+    <!-- Dish Grid Cards -->
     <?php if (empty($dishes)): ?>
         <div style="background: white; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); padding: 3.5rem 2rem; text-align: center; margin-top: 1.5rem;">
             <span style="font-size: 3rem; display: block; margin-bottom: 0.5rem;">🔍</span>
@@ -178,9 +206,9 @@ $dishes = $stmt->fetchAll();
         <div class="dishes-grid">
             <?php foreach ($dishes as $dish): ?>
                 <?php
-                $stock = (int)$dish['current_stock'];
-                $stockClass = ($stock === 0) ? 'stock-out' : (($stock <= 10) ? 'stock-low' : 'stock-in');
-                $stockText = ($stock === 0) ? 'Sold Out' : (($stock <= 10) ? "Only {$stock} Left" : 'In Stock');
+                $dishStock = (int)$dish['current_stock'];
+                $stockStatusClass = ($dishStock === 0) ? 'stock-out' : (($dishStock <= 10) ? 'stock-low' : 'stock-in');
+                $stockStatusLabel = ($dishStock === 0) ? 'Sold Out' : (($dishStock <= 10) ? "Only {$dishStock} Left" : 'In Stock');
                 ?>
                 <article class="dish-card">
                     <div class="dish-media">
@@ -198,7 +226,7 @@ $dishes = $stmt->fetchAll();
                             <?php endif; ?>
                         </div>
 
-                        <span class="stock-pill <?= $stockClass ?>"><?= $stockText ?></span>
+                        <span class="stock-pill <?= $stockStatusClass ?>"><?= $stockStatusLabel ?></span>
                     </div>
 
                     <div class="dish-content">
@@ -211,7 +239,7 @@ $dishes = $stmt->fetchAll();
                         <div class="dish-footer">
                             <span class="dish-price"><?= format_price($dish['price']) ?></span>
                             
-                            <?php if ($stock > 0): ?>
+                            <?php if ($dishStock > 0): ?>
                                 <form action="<?= $appBase ?>/orders/cart.php" method="POST" style="margin: 0;">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="add">
@@ -230,19 +258,19 @@ $dishes = $stmt->fetchAll();
             <?php endforeach; ?>
         </div>
 
-        <!-- Pagination -->
-        <?php if ($totalPages > 1): ?>
+        <!-- Pagination Controls -->
+        <?php if ($totalPageCount > 1): ?>
             <div class="pagination">
-                <a href="?<?= http_build_query(array_merge($_GET, ['page' => max(1, $page - 1)])) ?>" 
-                   class="page-btn <?= $page <= 1 ? 'disabled' : '' ?>">&larr; Prev</a>
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => max(1, $currentPageNum - 1)])) ?>" 
+                   class="page-btn <?= $currentPageNum <= 1 ? 'disabled' : '' ?>">&larr; Prev</a>
 
-                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>" 
-                       class="page-btn <?= $page === $i ? 'active' : '' ?>"><?= $i ?></a>
+                <?php for ($pageIndex = 1; $pageIndex <= $totalPageCount; $pageIndex++): ?>
+                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $pageIndex])) ?>" 
+                       class="page-btn <?= $currentPageNum === $pageIndex ? 'active' : '' ?>"><?= $pageIndex ?></a>
                 <?php endfor; ?>
 
-                <a href="?<?= http_build_query(array_merge($_GET, ['page' => min($totalPages, $page + 1)])) ?>" 
-                   class="page-btn <?= $page >= $totalPages ? 'disabled' : '' ?>">Next &rarr;</a>
+                <a href="?<?= http_build_query(array_merge($_GET, ['page' => min($totalPageCount, $currentPageNum + 1)])) ?>" 
+                   class="page-btn <?= $currentPageNum >= $totalPageCount ? 'disabled' : '' ?>">Next &rarr;</a>
             </div>
         <?php endif; ?>
     <?php endif; ?>
