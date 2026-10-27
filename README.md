@@ -22,38 +22,6 @@ The platform eliminates paper ticket errors, prevents ordering out-of-stock dish
 | **Component B: Menu, Catalogue & Inventory** *(Student 2)* | Catalogue CRUD, Stock Control, Search, Filtering & Image Upload | Public menu with category pills, keyword search, price & name sorting (whitelisted), dietary filters (veg, spicy), pagination, dish detail view, staff CRUD with soft delete (`is_active = 0`), secure image upload (MIME, size, extension, unguessable filenames), transaction-safe `reduce_stock()` refusing negative stock, restock and wastage audits. |
 | **Component C: Ordering, Payment & Tracking** *(Student 3)* | Cart, Checkout Transaction, Workflow Engine & Reports | Session-based cart with live DB price re-verification, atomic database transaction checkout (orders, items, payment, stock deduction, rollback), coupon engine (percentage/fixed discounts, usage limits), order workflow state machine (`Placed` &rarr; `Preparing` &rarr; `Ready` &rarr; `Out for Delivery` / `Collected` &rarr; `Completed`), printable invoice receipts, kitchen queue board, sales reports (JOIN, GROUP BY, aggregates). |
 
----
-
-## 🔑 Test Login Credentials (Viva & Evaluation)
-
-All seeded test accounts use the default password: **`Password123!`**
-
-| Role | Email Address | Password | Name | Access Scope |
-|---|---|---|---|---|
-| **Administrator** | `admin@urbaneats.lk` | `Password123!` | Maleesha Sanjana | Full administrative panel, user management, audit logs, sales reports, kitchen queue, catalogue |
-| **Administrator** | `nethmi.admin@urbaneats.lk` | `Password123!` | Nethmi Mohotti | Full administrative privileges |
-| **Kitchen Staff** | `chef.kasun@urbaneats.lk` | `Password123!` | Kasun Fernando | Kitchen order queue, live status progression, stock adjustments, dish catalogue |
-| **Kitchen Staff** | `dinuka.kitchen@urbaneats.lk` | `Password123!` | Dinuka Silva | Kitchen line operations & stock dashboard |
-| **Kitchen Staff** | `nuwan.stock@urbaneats.lk` | `Password123!` | Nuwan Bandara | Inventory & wastage controller |
-| **Customer** | `amara.j@gmail.com` | `Password123!` | Amara Jayawardena | Menu browsing, cart, checkout, live tracking, order history, profile |
-| **Customer** | `roshan.desilva@yahoo.com` | `Password123!` | Roshan De Silva | Menu browsing & order history |
-| **Customer** | `kavindi.p@outlook.com` | `Password123!` | Kavindi Perera | Menu browsing & order history |
-
-*Note: Visitors can also create new customer accounts via the `/public/auth/register.php` portal.*
-
----
-
-## 🎟️ Active Promotional Coupons
-
-| Coupon Code | Discount Type | Value | Min. Order Amount | Notes |
-|---|---|---|---|---|
-| `FIRSTORDER` | Percentage | 15% off (Max LKR 500) | LKR 1,000.00 | Valid for all users |
-| `KOTTU10` | Percentage | 10% off (Max LKR 400) | LKR 1,500.00 | Kottu special |
-| `FLAT300` | Fixed Amount | LKR 300.00 off | LKR 2,000.00 | Flat discount |
-| `WEEKEND20` | Percentage | 20% off (Max LKR 1,000) | LKR 2,500.00 | Weekend feast promo |
-| `SPICY500` | Fixed Amount | LKR 500.00 off | LKR 3,500.00 | Bulk order discount |
-
----
 
 ## 🚀 Setup & Installation Guide
 
