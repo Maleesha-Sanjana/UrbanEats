@@ -1,0 +1,57 @@
+# ==============================================================================
+# UrbanEats Cloud Kitchen Platform - Git Ignore Rules
+# Module: IT3113 Advanced Web Technologies
+# Student 2: Denuka (Component B - Menu, Catalogue & Inventory)
+# ==============================================================================
+
+# Local configuration overrides (Contains sensitive DB passwords / credentials)
+config/config.php
+
+# Server and application runtime logs
+logs/*.log
+!logs/.gitkeep
+
+# Operating System specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# IDE & Code Editor directories
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.user
+*.swp
+*~
+
+# Temporary and cache files
+*.tmp
+*.bak
+*.cache
+
+# Node / Composer dependencies (if any utilities are introduced)
+vendor/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Public Uploads: Keep directory structure, htaccess and seeded images
+# Runtime uploads can be tracked or excluded as needed
+public/uploads/.htaccess
+!public/uploads/*.jpg
+!public/uploads/*.png
+!public/uploads/*.webp
