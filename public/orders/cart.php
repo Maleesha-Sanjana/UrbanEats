@@ -9,8 +9,9 @@
 
 $currentPage = 'cart';
 $pageTitle = 'Shopping Cart - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 $pdo = get_db_connection();
 
 if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) {
@@ -27,20 +28,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add') {
         $qty = max(1, (int)($_POST['quantity'] ?? 1));
         if ($dishId > 0) {
-            // Check current stock from DB
-            $sStmt = $pdo->prepare("SELECT current_stock FROM inventory WHERE dish_id = :id");
+            // Check active dish availability and current stock from DB.
+            $sStmt = $pdo->prepare("
+                SELECT i.current_stock
+                FROM inventory i
+                JOIN dishes d ON d.id = i.dish_id
+                WHERE i.dish_id = :id AND d.is_active = 1
+            ");
             $sStmt->execute([':id' => $dishId]);
-            $availableStock = (int)$sStmt->fetchColumn();
+            $availableStock = $sStmt->fetchColumn();
 
-            $currentInCart = (int)($_SESSION['cart'][$dishId] ?? 0);
-            $newQty = $currentInCart + $qty;
-
-            if ($newQty > $availableStock) {
-                set_flash('warning', "Cannot add more than available kitchen stock ({$availableStock} units).");
-                $_SESSION['cart'][$dishId] = max(1, $availableStock);
+            if ($availableStock === false || (int)$availableStock <= 0) {
+                unset($_SESSION['cart'][$dishId]);
+                set_flash('warning', 'This dish is currently unavailable.');
             } else {
-                $_SESSION['cart'][$dishId] = $newQty;
-                set_flash('success', 'Item added to your shopping cart!');
+                $availableStock = (int)$availableStock;
+                $currentInCart = (int)($_SESSION['cart'][$dishId] ?? 0);
+                $newQty = $currentInCart + $qty;
+
+                if ($newQty > $availableStock) {
+                    set_flash('warning', "Cannot add more than available kitchen stock ({$availableStock} units).");
+                    $_SESSION['cart'][$dishId] = $availableStock;
+                } else {
+                    $_SESSION['cart'][$dishId] = $newQty;
+                    set_flash('success', 'Item added to your shopping cart!');
+                }
             }
         }
     } elseif ($action === 'update') {
@@ -50,11 +62,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($_SESSION['cart'][$dishId]);
                 set_flash('info', 'Item removed from cart.');
             } else {
-                $sStmt = $pdo->prepare("SELECT current_stock FROM inventory WHERE dish_id = :id");
+                $sStmt = $pdo->prepare("
+                    SELECT i.current_stock
+                    FROM inventory i
+                    JOIN dishes d ON d.id = i.dish_id
+                    WHERE i.dish_id = :id AND d.is_active = 1
+                ");
                 $sStmt->execute([':id' => $dishId]);
-                $availableStock = (int)$sStmt->fetchColumn();
+                $availableStock = $sStmt->fetchColumn();
 
-                if ($qty > $availableStock) {
+                if ($availableStock === false || (int)$availableStock <= 0) {
+                    unset($_SESSION['cart'][$dishId]);
+                    set_flash('warning', 'This dish is currently unavailable and has been removed from your cart.');
+                } elseif ($qty > (int)$availableStock) {
+                    $availableStock = (int)$availableStock;
                     $_SESSION['cart'][$dishId] = $availableStock;
                     set_flash('warning', "Quantity adjusted to maximum available stock ({$availableStock} units).");
                 } else {
@@ -84,6 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Location: {$appBase}/orders/cart.php");
     exit;
 }
+
+require_once __DIR__ . '/../../includes/header.php';
 
 // 2. Fetch Live Cart Details from DB
 $cartData = get_cart_details($pdo);

@@ -10,8 +10,9 @@
 
 $currentPage = 'kitchen';
 $pageTitle = 'Kitchen Order Queue - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_role(['kitchen_staff', 'admin']);
 
 $pdo = get_db_connection();
@@ -25,59 +26,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newStatus = trim($_POST['new_status'] ?? '');
     $staffComment = trim($_POST['comment'] ?? '');
 
-    // Fetch current order status
-    $stmt = $pdo->prepare("SELECT id, order_number, status, order_type FROM orders WHERE id = :id");
-    $stmt->execute([':id' => $orderId]);
-    $order = $stmt->fetch();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("SELECT id, order_number, status, order_type FROM orders WHERE id = :id FOR UPDATE");
+        $stmt->execute([':id' => $orderId]);
+        $order = $stmt->fetch();
 
-    if (!$order) {
-        set_flash('error', 'Order ticket not found.');
-    } else {
-        $currentStatus = $order['status'];
-
-        // Enforce State Machine Validation
-        if (!is_valid_status_transition($currentStatus, $newStatus)) {
-            set_flash('error', "Invalid workflow transition from '{$currentStatus}' to '{$newStatus}'.");
+        if (!$order) {
+            $pdo->rollBack();
+            set_flash('error', 'Order ticket not found.');
+        } elseif (!is_valid_status_transition($order['status'], $newStatus, $order['order_type'])) {
+            $pdo->rollBack();
+            set_flash('error', "Invalid workflow transition from '{$order['status']}' to '{$newStatus}'.");
         } else {
-            $pdo->beginTransaction();
-            try {
-                // Update Order Status
-                $upd = $pdo->prepare("UPDATE orders SET status = :status, updated_at = NOW() WHERE id = :id");
-                $upd->execute([':status' => $newStatus, ':id' => $orderId]);
+            $upd = $pdo->prepare("UPDATE orders SET status = :status, updated_at = NOW() WHERE id = :id");
+            $upd->execute([':status' => $newStatus, ':id' => $orderId]);
 
-                // Default comment if empty
-                if (empty($staffComment)) {
-                    $staffComment = "Status updated to {$newStatus} by kitchen staff";
+            if ($newStatus === 'Cancelled') {
+                $itemStmt = $pdo->prepare("SELECT dish_id, quantity FROM order_items WHERE order_id = :oid");
+                $itemStmt->execute([':oid' => $orderId]);
+                foreach ($itemStmt->fetchAll() as $item) {
+                    $restockStmt = $pdo->prepare("UPDATE inventory SET current_stock = current_stock + :qty WHERE dish_id = :id");
+                    $restockStmt->execute([':qty' => $item['quantity'], ':id' => $item['dish_id']]);
+                    record_stock_movement(
+                        $pdo,
+                        (int)$item['dish_id'],
+                        $currentStaffId,
+                        'restock',
+                        (int)$item['quantity'],
+                        "Restocked due to Order #{$order['order_number']} kitchen cancellation"
+                    );
                 }
 
-                // Insert into order_status_history
-                $hStmt = $pdo->prepare("
-                    INSERT INTO order_status_history (order_id, changed_by_user_id, old_status, new_status, comment, created_at)
-                    VALUES (:oid, :uid, :old_status, :new_status, :comment, NOW())
+                $paymentStmt = $pdo->prepare("
+                    UPDATE payments
+                    SET payment_status = CASE WHEN payment_status = 'completed' THEN 'refunded' ELSE payment_status END
+                    WHERE order_id = :oid
                 ");
-                $hStmt->execute([
-                    ':oid'        => $orderId,
-                    ':uid'        => $currentStaffId,
-                    ':old_status' => $currentStatus,
-                    ':new_status' => $newStatus,
-                    ':comment'    => $staffComment
-                ]);
-
-                // Audit log
-                log_action(
-                    $pdo,
-                    'ORDER_STATUS_UPDATE',
-                    "Order {$order['order_number']} advanced from {$currentStatus} to {$newStatus}",
-                    $currentStaffId
-                );
-
-                $pdo->commit();
-                set_flash('success', "Order #{$order['order_number']} successfully advanced to '{$newStatus}'!");
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                set_flash('error', 'Failed to update order status: ' . $e->getMessage());
+                $paymentStmt->execute([':oid' => $orderId]);
             }
+
+            $staffComment = $staffComment !== ''
+                ? $staffComment
+                : "Status updated to {$newStatus} by kitchen staff";
+            $hStmt = $pdo->prepare("
+                INSERT INTO order_status_history (order_id, changed_by_user_id, old_status, new_status, comment, created_at)
+                VALUES (:oid, :uid, :old_status, :new_status, :comment, NOW())
+            ");
+            $hStmt->execute([
+                ':oid' => $orderId,
+                ':uid' => $currentStaffId,
+                ':old_status' => $order['status'],
+                ':new_status' => $newStatus,
+                ':comment' => $staffComment
+            ]);
+
+            log_action(
+                $pdo,
+                'ORDER_STATUS_UPDATE',
+                "Order {$order['order_number']} advanced from {$order['status']} to {$newStatus}",
+                $currentStaffId
+            );
+
+            $pdo->commit();
+            set_flash('success', "Order #{$order['order_number']} successfully advanced to '{$newStatus}'!");
         }
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        set_flash('error', 'Failed to update order status: ' . $e->getMessage());
     }
 
     header("Location: {$appBase}/orders/kitchen.php?" . http_build_query($_GET));
@@ -133,6 +151,8 @@ if (!empty($orderIds)) {
     }
 }
 ?>
+
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
     <!-- Header -->

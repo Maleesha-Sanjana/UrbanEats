@@ -9,8 +9,9 @@
 
 $currentPage = 'orders';
 $pageTitle = 'Live Order Tracking - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_login();
 
 $pdo = get_db_connection();
@@ -57,19 +58,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } else {
         $pdo->beginTransaction();
         try {
-            // Update order status
+            $lockStmt = $pdo->prepare("SELECT status FROM orders WHERE id = :id FOR UPDATE");
+            $lockStmt->execute([':id' => $order['id']]);
+            $lockedStatus = $lockStmt->fetchColumn();
+
+            if ($lockedStatus !== 'Placed' || !is_valid_status_transition((string)$lockedStatus, 'Cancelled')) {
+                throw new Exception('This order can no longer be cancelled because its status has changed.');
+            }
+
             $upd = $pdo->prepare("UPDATE orders SET status = 'Cancelled', updated_at = NOW() WHERE id = :id");
             $upd->execute([':id' => $order['id']]);
 
-            // Restore inventory stock
             $itemStmt = $pdo->prepare("SELECT dish_id, quantity FROM order_items WHERE order_id = :oid");
             $itemStmt->execute([':oid' => $order['id']]);
-            $orderItems = $itemStmt->fetchAll();
-
-            foreach ($orderItems as $item) {
+            foreach ($itemStmt->fetchAll() as $item) {
                 $restockStmt = $pdo->prepare("UPDATE inventory SET current_stock = current_stock + :qty WHERE dish_id = :id");
                 $restockStmt->execute([':qty' => $item['quantity'], ':id' => $item['dish_id']]);
-
                 record_stock_movement(
                     $pdo,
                     (int)$item['dish_id'],
@@ -80,28 +84,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 );
             }
 
-            // Record status history
             $histStmt = $pdo->prepare("
                 INSERT INTO order_status_history (order_id, changed_by_user_id, old_status, new_status, comment, created_at)
                 VALUES (:oid, :uid, 'Placed', 'Cancelled', 'Order cancelled by customer', NOW())
             ");
             $histStmt->execute([':oid' => $order['id'], ':uid' => $userId]);
 
-            // Update payment to refunded if applicable
-            $payUpd = $pdo->prepare("UPDATE payments SET payment_status = 'refunded' WHERE order_id = :oid");
+            $payUpd = $pdo->prepare("
+                UPDATE payments
+                SET payment_status = CASE WHEN payment_status = 'completed' THEN 'refunded' ELSE payment_status END
+                WHERE order_id = :oid
+            ");
             $payUpd->execute([':oid' => $order['id']]);
 
             log_action($pdo, 'ORDER_CANCELLED', "Order {$orderNumber} cancelled by customer", $userId);
 
             $pdo->commit();
             set_flash('info', "Order #{$orderNumber} has been successfully cancelled and stock restored.");
-            header("Location: {$appBase}/orders/tracking.php?order_number=" . urlencode($orderNumber));
-            exit;
-        } catch (Exception $e) {
-            $pdo->rollBack();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             set_flash('error', 'Cancellation failed: ' . $e->getMessage());
         }
     }
+
+    header("Location: {$appBase}/orders/tracking.php?order_number=" . urlencode($orderNumber));
+    exit;
 }
 
 // 3. Fetch Status Workflow History Trail
@@ -130,6 +139,8 @@ if ($currentIndex === false && $currentStatus === 'Cancelled') {
     $isCancelled = false;
 }
 ?>
+
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
     <!-- Header -->
