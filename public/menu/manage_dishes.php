@@ -1,122 +1,142 @@
 <?php
 /**
  * UrbanEats Cloud Kitchen Platform
- * Component B: Dish Catalogue Management (CRUD)
+ * Component B: Dish Catalogue Management (Staff & Admin CRUD)
+ * Student 2: Denuka (Component B Owner)
  *
- * Implements Staff/Admin CRUD, soft deletion (is_active flag),
- * secure image upload (MIME, size, extension, unique naming),
- * and centralized audit logging.
+ * Key Responsibilities:
+ * - Staff/Admin RBAC enforcement via require_role()
+ * - Full CRUD with parameterized prepared statements
+ * - Soft deletion pattern (setting is_active = 0 preserves past order references)
+ * - Safe image upload integration (MIME, size, extension, unguessable filename)
+ * - Initial inventory row creation and audit log recording
  */
 
 $currentPage = 'dishes';
 $pageTitle = 'Manage Dishes - UrbanEats Cloud Kitchen';
 require_once __DIR__ . '/../../includes/header.php';
 
+// Access Control: Only kitchen staff and administrators are permitted here
 require_role(['kitchen_staff', 'admin']);
 
 $pdo = get_db_connection();
 $currentUserId = (int)$_SESSION['user_id'];
 
-// 1. Fetch Categories for Dropdowns
-$categories = $pdo->query("SELECT * FROM categories WHERE is_active = 1 ORDER BY name ASC")->fetchAll();
+// 1. Fetch active categories for dropdown selectors
+$categoriesStmt = $pdo->query("
+    SELECT id, name, slug 
+    FROM categories 
+    WHERE is_active = 1 
+    ORDER BY name ASC
+");
+$categories = $categoriesStmt->fetchAll();
 
 // 2. Handle POST Actions (Create, Update, Soft Delete, Reactivate)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validate_csrf_or_fail();
 
-    $action = $_POST['action'] ?? '';
+    $submittedAction = $_POST['action'] ?? '';
 
-    // Action: Soft Delete / Archive Dish
-    if ($action === 'delete') {
+    // Action A: Soft Delete / Archive Dish
+    // VIVA EXPLANATION: Soft delete sets is_active = 0 so historical order receipts never break
+    if ($submittedAction === 'delete') {
         $dishId = (int)($_POST['dish_id'] ?? 0);
-        $stmt = $pdo->prepare("SELECT name FROM dishes WHERE id = :id");
-        $stmt->execute([':id' => $dishId]);
-        $dishName = $stmt->fetchColumn();
+        
+        $nameCheckStmt = $pdo->prepare("SELECT name FROM dishes WHERE id = :id");
+        $nameCheckStmt->execute([':id' => $dishId]);
+        $targetDishName = $nameCheckStmt->fetchColumn();
 
-        if ($dishName) {
-            // Soft delete: set is_active = 0
-            $delStmt = $pdo->prepare("UPDATE dishes SET is_active = 0 WHERE id = :id");
-            $delStmt->execute([':id' => $dishId]);
+        if ($targetDishName) {
+            $archiveStmt = $pdo->prepare("UPDATE dishes SET is_active = 0 WHERE id = :id");
+            $archiveStmt->execute([':id' => $dishId]);
 
-            log_action($pdo, 'DISH_DEACTIVATED', "Soft deleted dish: {$dishName} (ID: {$dishId})", $currentUserId);
-            set_flash('success', "Dish '{$dishName}' was archived successfully. Historical orders remain intact.");
+            log_action(
+                $pdo, 
+                'DISH_DEACTIVATED', 
+                "Soft deleted dish: {$targetDishName} (ID: {$dishId})", 
+                $currentUserId
+            );
+            set_flash('success', "Dish '{$targetDishName}' was archived. Historical orders remain intact.");
         }
         header("Location: {$appBase}/menu/manage_dishes.php");
         exit;
     }
 
-    // Action: Reactivate Dish
-    if ($action === 'reactivate') {
+    // Action B: Reactivate Archived Dish
+    if ($submittedAction === 'reactivate') {
         $dishId = (int)($_POST['dish_id'] ?? 0);
-        $stmt = $pdo->prepare("UPDATE dishes SET is_active = 1 WHERE id = :id");
-        $stmt->execute([':id' => $dishId]);
+        
+        $reactivateStmt = $pdo->prepare("UPDATE dishes SET is_active = 1 WHERE id = :id");
+        $reactivateStmt->execute([':id' => $dishId]);
 
         log_action($pdo, 'DISH_REACTIVATED', "Reactivated dish ID: {$dishId}", $currentUserId);
-        set_flash('success', 'Dish reactivated and restored to public menu.');
+        set_flash('success', 'Dish has been reactivated and returned to the public menu.');
         header("Location: {$appBase}/menu/manage_dishes.php");
         exit;
     }
 
-    // Action: Create or Update Dish
-    if ($action === 'save') {
-        $dishId = (int)($_POST['dish_id'] ?? 0);
-        $name = trim($_POST['name'] ?? '');
-        $categoryId = (int)($_POST['category_id'] ?? 0);
-        $price = (float)($_POST['price'] ?? 0);
-        $description = trim($_POST['description'] ?? '');
-        $isSpicy = isset($_POST['is_spicy']) ? 1 : 0;
+    // Action C: Create or Update Dish Record
+    if ($submittedAction === 'save') {
+        $dishId       = (int)($_POST['dish_id'] ?? 0);
+        $dishName     = trim($_POST['name'] ?? '');
+        $categoryId   = (int)($_POST['category_id'] ?? 0);
+        $price        = (float)($_POST['price'] ?? 0);
+        $description  = trim($_POST['description'] ?? '');
+        $isSpicy      = isset($_POST['is_spicy']) ? 1 : 0;
         $isVegetarian = isset($_POST['is_vegetarian']) ? 1 : 0;
-        $stockQty = max(0, (int)($_POST['stock_qty'] ?? 0));
+        $initialStock = max(0, (int)($_POST['stock_qty'] ?? 0));
         $reorderLevel = max(1, (int)($_POST['reorder_level'] ?? 10));
 
-        // Validation
-        if (empty($name) || $categoryId <= 0 || $price <= 0) {
-            set_flash('error', 'Please fill in all required fields (Name, Category, and valid Price).');
+        // Strict Server-Side Validation
+        if ($dishName === '' || $categoryId <= 0 || $price <= 0) {
+            set_flash('error', 'Please fill in all required fields (Dish Name, Category, and a valid positive Price).');
             header("Location: {$appBase}/menu/manage_dishes.php");
             exit;
         }
 
-        // Handle Image Upload if provided
-        $imageUrl = null;
+        // Handle Image Upload if a file was provided
+        $uploadedImageName = null;
         if (!empty($_FILES['dish_image']) && $_FILES['dish_image']['error'] !== UPLOAD_ERR_NO_FILE) {
-            $uploadResult = upload_dish_image($_FILES['dish_image']);
-            if (!$uploadResult['success']) {
-                set_flash('error', 'Image Upload Failed: ' . $uploadResult['error']);
+            $uploadStatus = upload_dish_image($_FILES['dish_image']);
+            if (!$uploadStatus['success']) {
+                set_flash('error', 'Image Upload Failed: ' . $uploadStatus['error']);
                 header("Location: {$appBase}/menu/manage_dishes.php");
                 exit;
             }
-            $imageUrl = $uploadResult['filename'];
+            $uploadedImageName = $uploadStatus['filename'];
         }
 
         if ($dishId > 0) {
-            // Update Existing Dish
-            if ($imageUrl !== null) {
-                $upd = $pdo->prepare("
+            // Updating an existing dish
+            if ($uploadedImageName !== null) {
+                $updateDishSql = "
                     UPDATE dishes 
                     SET category_id = :cat_id, name = :name, description = :desc, price = :price,
                         image_url = :img, is_spicy = :spicy, is_vegetarian = :veg
                     WHERE id = :id
-                ");
-                $upd->execute([
+                ";
+                $updateStmt = $pdo->prepare($updateDishSql);
+                $updateStmt->execute([
                     ':cat_id' => $categoryId,
-                    ':name'   => $name,
+                    ':name'   => $dishName,
                     ':desc'   => $description,
                     ':price'  => $price,
-                    ':img'    => $imageUrl,
+                    ':img'    => $uploadedImageName,
                     ':spicy'  => $isSpicy,
                     ':veg'    => $isVegetarian,
                     ':id'     => $dishId
                 ]);
             } else {
-                $upd = $pdo->prepare("
+                $updateDishSql = "
                     UPDATE dishes 
                     SET category_id = :cat_id, name = :name, description = :desc, price = :price,
                         is_spicy = :spicy, is_vegetarian = :veg
                     WHERE id = :id
-                ");
-                $upd->execute([
+                ";
+                $updateStmt = $pdo->prepare($updateDishSql);
+                $updateStmt->execute([
                     ':cat_id' => $categoryId,
-                    ':name'   => $name,
+                    ':name'   => $dishName,
                     ':desc'   => $description,
                     ':price'  => $price,
                     ':spicy'  => $isSpicy,
@@ -125,47 +145,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
             }
 
-            // Update inventory reorder level
-            $updInv = $pdo->prepare("UPDATE inventory SET reorder_level = :reorder WHERE dish_id = :dish_id");
-            $updInv->execute([':reorder' => $reorderLevel, ':dish_id' => $dishId]);
+            // Keep inventory reorder threshold synchronized
+            $updateInvStmt = $pdo->prepare("UPDATE inventory SET reorder_level = :reorder WHERE dish_id = :dish_id");
+            $updateInvStmt->execute([':reorder' => $reorderLevel, ':dish_id' => $dishId]);
 
-            log_action($pdo, 'DISH_UPDATED', "Updated details for dish: {$name} (ID: {$dishId})", $currentUserId);
-            set_flash('success', "Dish '{$name}' was updated successfully.");
+            log_action($pdo, 'DISH_UPDATED', "Updated dish '{$dishName}' (ID: {$dishId})", $currentUserId);
+            set_flash('success', "Dish '{$dishName}' was updated successfully.");
         } else {
-            // Insert New Dish
-            $ins = $pdo->prepare("
+            // Creating a new dish
+            $insertDishSql = "
                 INSERT INTO dishes (category_id, name, description, price, image_url, is_spicy, is_vegetarian, is_active, created_at)
                 VALUES (:cat_id, :name, :desc, :price, :img, :spicy, :veg, 1, NOW())
-            ");
-            $ins->execute([
+            ";
+            $insertStmt = $pdo->prepare($insertDishSql);
+            $insertStmt->execute([
                 ':cat_id' => $categoryId,
-                ':name'   => $name,
+                ':name'   => $dishName,
                 ':desc'   => $description,
                 ':price'  => $price,
-                ':img'    => $imageUrl ?: 'default_dish.jpg',
+                ':img'    => $uploadedImageName ?: 'default_dish.jpg',
                 ':spicy'  => $isSpicy,
                 ':veg'    => $isVegetarian
             ]);
 
             $newDishId = (int)$pdo->lastInsertId();
 
-            // Insert initial inventory row
-            $invIns = $pdo->prepare("
+            // Insert matching inventory record
+            $insertInvStmt = $pdo->prepare("
                 INSERT INTO inventory (dish_id, current_stock, reorder_level, updated_at)
                 VALUES (:dish_id, :stock, :reorder, NOW())
             ");
-            $invIns->execute([
+            $insertInvStmt->execute([
                 ':dish_id' => $newDishId,
-                ':stock'   => $stockQty,
+                ':stock'   => $initialStock,
                 ':reorder' => $reorderLevel
             ]);
 
-            if ($stockQty > 0) {
-                record_stock_movement($pdo, $newDishId, $currentUserId, 'restock', $stockQty, 'Initial dish inventory creation');
+            // If initial stock was given, record movement in stock_movements table
+            if ($initialStock > 0) {
+                record_stock_movement(
+                    $pdo, 
+                    $newDishId, 
+                    $currentUserId, 
+                    'restock', 
+                    $initialStock, 
+                    'Initial stock on dish creation'
+                );
             }
 
-            log_action($pdo, 'DISH_ADDED', "Added new dish '{$name}' with {$stockQty} initial stock", $currentUserId);
-            set_flash('success', "New dish '{$name}' has been created and added to the menu!");
+            log_action($pdo, 'DISH_ADDED', "Added new dish '{$dishName}' with {$initialStock} units", $currentUserId);
+            set_flash('success', "New dish '{$dishName}' created and published!");
         }
 
         header("Location: {$appBase}/menu/manage_dishes.php");
@@ -173,24 +202,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 3. Fetch Dish for Editing if requested
+// 3. Fetch dish details if editing is requested via ?edit_id
 $editDish = null;
 if (isset($_GET['edit_id'])) {
     $editId = (int)$_GET['edit_id'];
-    $eStmt = $pdo->prepare("
-        SELECT d.*, COALESCE(i.current_stock, 0) AS current_stock, COALESCE(i.reorder_level, 10) AS reorder_level
+    $editFetchStmt = $pdo->prepare("
+        SELECT d.*, 
+               COALESCE(i.current_stock, 0) AS current_stock, 
+               COALESCE(i.reorder_level, 10) AS reorder_level
         FROM dishes d
         LEFT JOIN inventory i ON d.id = i.dish_id
         WHERE d.id = :id
         LIMIT 1
     ");
-    $eStmt->execute([':id' => $editId]);
-    $editDish = $eStmt->fetch();
+    $editFetchStmt->execute([':id' => $editId]);
+    $editDish = $editFetchStmt->fetch();
 }
 
-// 4. Fetch All Dishes with Inventory
-$dishesQuery = "
-    SELECT d.*, c.name AS category_name,
+// 4. Retrieve complete catalogue with joined categories and inventory
+$catalogueQuery = "
+    SELECT d.id, d.name, d.price, d.image_url, d.is_spicy, d.is_vegetarian, d.is_active,
+           c.name AS category_name,
            COALESCE(i.current_stock, 0) AS current_stock,
            COALESCE(i.reorder_level, 10) AS reorder_level
     FROM dishes d
@@ -198,14 +230,16 @@ $dishesQuery = "
     LEFT JOIN inventory i ON d.id = i.dish_id
     ORDER BY d.is_active DESC, d.id DESC
 ";
-$allDishes = $pdo->query($dishesQuery)->fetchAll();
+$allDishes = $pdo->query($catalogueQuery)->fetchAll();
 ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
-    <!-- Page Header -->
+    <!-- Page Header & Action Links -->
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
         <div>
-            <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">Component B: Inventory & Catalogue</span>
+            <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">
+                Component B: Inventory & Catalogue
+            </span>
             <h1 style="font-size: 2rem; margin-top: 0.25rem;">Manage Dish Catalogue</h1>
         </div>
         <div style="display: flex; gap: 0.75rem;">
@@ -223,7 +257,7 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
         <form action="<?= $appBase ?>/menu/manage_dishes.php" method="POST" enctype="multipart/form-data">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save">
-            <input type="hidden" name="dish_id" value="<?= $editDish ? $editDish['id'] : 0 ?>">
+            <input type="hidden" name="dish_id" value="<?= $editDish ? (int)$editDish['id'] : 0 ?>">
 
             <div class="form-row">
                 <div class="form-group">
@@ -235,9 +269,9 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
                     <label for="category_id" class="form-label">Menu Category <span class="required">*</span></label>
                     <select id="category_id" name="category_id" class="form-control" required>
                         <option value="">-- Choose Category --</option>
-                        <?php foreach ($categories as $c): ?>
-                            <option value="<?= $c['id'] ?>" <?= ($editDish && (int)$editDish['category_id'] === (int)$c['id']) ? 'selected' : '' ?>>
-                                <?= e($c['name']) ?>
+                        <?php foreach ($categories as $cat): ?>
+                            <option value="<?= $cat['id'] ?>" <?= ($editDish && (int)$editDish['category_id'] === (int)$cat['id']) ? 'selected' : '' ?>>
+                                <?= e($cat['name']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -259,12 +293,12 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
                     <label for="dish_image" class="form-label">Dish Image (JPG, PNG, WEBP - Max 2MB)</label>
                     <input type="file" id="dish_image" name="dish_image" class="form-control" accept="image/jpeg,image/png,image/webp">
                     <?php if ($editDish && !empty($editDish['image_url'])): ?>
-                        <p class="form-hint">Current image: <code><?= e($editDish['image_url']) ?></code></p>
+                        <p class="form-hint">Current file: <code><?= e($editDish['image_url']) ?></code></p>
                     <?php endif; ?>
                 </div>
 
                 <div class="form-group">
-                    <label for="reorder_level" class="form-label">Low Stock Reorder Alert Level</label>
+                    <label for="reorder_level" class="form-label">Low Stock Alert Threshold</label>
                     <input type="number" min="1" id="reorder_level" name="reorder_level" class="form-control" value="<?= e($editDish['reorder_level'] ?? 10) ?>" required>
                 </div>
 
@@ -298,10 +332,14 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
         </form>
     </div>
 
-    <!-- Catalogue Table -->
+    <!-- Catalogue List Table -->
     <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="font-size: 1.35rem; color: var(--color-secondary);">All Dishes in Database (<?= count($allDishes) ?>)</h2>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Soft deleted dishes are preserved for historical order integrity</span>
+        <h2 style="font-size: 1.35rem; color: var(--color-secondary);">
+            All Dishes in Catalogue (<?= count($allDishes) ?>)
+        </h2>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">
+            Soft-deleted dishes remain preserved for historical order integrity
+        </span>
     </div>
 
     <div class="data-table-container">
@@ -319,44 +357,44 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($allDishes as $d): ?>
+                <?php foreach ($allDishes as $dishItem): ?>
                     <?php
-                    $isLow = ((int)$d['current_stock'] <= (int)$d['reorder_level']);
-                    $isZero = ((int)$d['current_stock'] === 0);
+                    $isItemLowStock = ((int)$dishItem['current_stock'] <= (int)$dishItem['reorder_level']);
+                    $isItemZeroStock = ((int)$dishItem['current_stock'] === 0);
                     ?>
-                    <tr style="<?= (int)$d['is_active'] === 0 ? 'opacity: 0.6; background-color: #f8fafc;' : '' ?>">
+                    <tr style="<?= (int)$dishItem['is_active'] === 0 ? 'opacity: 0.6; background-color: #f8fafc;' : '' ?>">
                         <td>
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                <img src="<?= $appBase ?>/uploads/<?= e($d['image_url'] ?: 'default_dish.jpg') ?>" 
-                                     alt="<?= e($d['name']) ?>" 
+                                <img src="<?= $appBase ?>/uploads/<?= e($dishItem['image_url'] ?: 'default_dish.jpg') ?>" 
+                                     alt="<?= e($dishItem['name']) ?>" 
                                      style="width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; background: #e2e8f0;"
                                      onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=100&q=80'">
                                 <div>
-                                    <strong><?= e($d['name']) ?></strong>
-                                    <span style="display: block; font-size: 0.75rem; color: var(--text-muted);">ID #<?= $d['id'] ?></span>
+                                    <strong><?= e($dishItem['name']) ?></strong>
+                                    <span style="display: block; font-size: 0.75rem; color: var(--text-muted);">ID #<?= $dishItem['id'] ?></span>
                                 </div>
                             </div>
                         </td>
-                        <td><?= e($d['category_name']) ?></td>
-                        <td><strong><?= format_price($d['price']) ?></strong></td>
+                        <td><?= e($dishItem['category_name']) ?></td>
+                        <td><strong><?= format_price($dishItem['price']) ?></strong></td>
                         <td>
-                            <?php if ($isZero): ?>
+                            <?php if ($isItemZeroStock): ?>
                                 <span class="badge badge-inactive">0 (Sold Out)</span>
-                            <?php elseif ($isLow): ?>
+                            <?php elseif ($isItemLowStock): ?>
                                 <span class="badge" style="background: #fffbeb; color: #92400e; border: 1px solid #fde68a;">
-                                    ⚠️ <?= $d['current_stock'] ?> units
+                                    ⚠️ <?= $dishItem['current_stock'] ?> units
                                 </span>
                             <?php else: ?>
-                                <span class="badge badge-active"><?= $d['current_stock'] ?> units</span>
+                                <span class="badge badge-active"><?= $dishItem['current_stock'] ?> units</span>
                             <?php endif; ?>
                         </td>
-                        <td><?= $d['reorder_level'] ?> units</td>
+                        <td><?= $dishItem['reorder_level'] ?> units</td>
                         <td>
-                            <?php if ((int)$d['is_vegetarian'] === 1): ?><span title="Vegetarian">🌱</span><?php endif; ?>
-                            <?php if ((int)$d['is_spicy'] === 1): ?><span title="Spicy">🌶️</span><?php endif; ?>
+                            <?php if ((int)$dishItem['is_vegetarian'] === 1): ?><span title="Vegetarian">🌱</span><?php endif; ?>
+                            <?php if ((int)$dishItem['is_spicy'] === 1): ?><span title="Spicy">🌶️</span><?php endif; ?>
                         </td>
                         <td>
-                            <?php if ((int)$d['is_active'] === 1): ?>
+                            <?php if ((int)$dishItem['is_active'] === 1): ?>
                                 <span class="badge badge-active">Active</span>
                             <?php else: ?>
                                 <span class="badge badge-inactive">Archived</span>
@@ -364,16 +402,16 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
                         </td>
                         <td style="text-align: right;">
                             <div style="display: inline-flex; gap: 0.5rem; align-items: center;">
-                                <a href="<?= $appBase ?>/menu/manage_dishes.php?edit_id=<?= $d['id'] ?>" class="btn btn-outline-sm">
+                                <a href="<?= $appBase ?>/menu/manage_dishes.php?edit_id=<?= $dishItem['id'] ?>" class="btn btn-outline-sm">
                                     Edit
                                 </a>
 
-                                <?php if ((int)$d['is_active'] === 1): ?>
+                                <?php if ((int)$dishItem['is_active'] === 1): ?>
                                     <form action="<?= $appBase ?>/menu/manage_dishes.php" method="POST" style="margin: 0;">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="delete">
-                                        <input type="hidden" name="dish_id" value="<?= $d['id'] ?>">
-                                        <button type="submit" class="btn btn-outline-sm text-danger" onclick="return confirm('Soft delete dish \'<?= e($d['name']) ?>\'? It will be hidden from the menu without breaking past orders.');">
+                                        <input type="hidden" name="dish_id" value="<?= $dishItem['id'] ?>">
+                                        <button type="submit" class="btn btn-outline-sm text-danger" onclick="return confirm('Soft delete dish \'<?= e($dishItem['name']) ?>\'? It will be hidden from the public menu.');">
                                             Archive
                                         </button>
                                     </form>
@@ -381,7 +419,7 @@ $allDishes = $pdo->query($dishesQuery)->fetchAll();
                                     <form action="<?= $appBase ?>/menu/manage_dishes.php" method="POST" style="margin: 0;">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="reactivate">
-                                        <input type="hidden" name="dish_id" value="<?= $d['id'] ?>">
+                                        <input type="hidden" name="dish_id" value="<?= $dishItem['id'] ?>">
                                         <button type="submit" class="btn btn-primary-sm" style="background: var(--color-success);">
                                             Restore
                                         </button>

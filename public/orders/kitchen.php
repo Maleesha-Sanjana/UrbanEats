@@ -8,8 +8,9 @@
  * state machine integrity, and audit tracking.
  */
 
-$currentPage = 'kitchen';
-$pageTitle = 'Kitchen Order Queue - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $appBase = get_app_base_url();
@@ -101,6 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Location: {$appBase}/orders/kitchen.php?" . http_build_query($_GET));
     exit;
 }
+
+$currentPage = 'kitchen';
+$pageTitle = 'Kitchen Order Queue - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 
 // 2. Filter Tab Selection
 $filterTab = trim($_GET['tab'] ?? 'active');

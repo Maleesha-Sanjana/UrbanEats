@@ -7,9 +7,10 @@
  * role reassignment, and audit logging.
  */
 
-$currentPage = 'admin';
-$pageTitle = 'Manage Users - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 require_role('admin');
 
@@ -68,6 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Location: {$appBase}/admin/users.php?" . http_build_query($_GET));
     exit;
 }
+
+$currentPage = 'admin';
+$pageTitle = 'Manage Users - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 
 // 2. Fetch All Roles for Filter & Modal
 $roles = $pdo->query("SELECT * FROM roles ORDER BY id ASC")->fetchAll();

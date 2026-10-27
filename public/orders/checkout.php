@@ -12,8 +12,9 @@
  * - Full ACID rollback on ANY failure
  */
 
-$currentPage = 'checkout';
-$pageTitle = 'Secure Checkout - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 $appBase = get_app_base_url();
@@ -269,6 +270,10 @@ if (!empty($appliedCouponCode) && $subtotal > 0) {
 }
 $estimatedDeliveryFee = ($orderType === 'delivery') ? 300.00 : 0.00;
 $estimatedTotal = max(0.00, ($subtotal - $couponDiscount) + $estimatedDeliveryFee);
+
+$currentPage = 'checkout';
+$pageTitle = 'Secure Checkout - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <?php require_once __DIR__ . '/../../includes/header.php'; ?>

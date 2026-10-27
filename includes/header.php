@@ -7,17 +7,19 @@
  * shopping cart item indicator, and flash message rendering.
  */
 
-ob_implicit_flush(false);
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/errors.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/functions.php';
 
-$appBase = get_app_base_url();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Dynamically determine base URL if not explicitly set
+$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+$publicPos = strpos($scriptPath, '/public');
+$appBase = ($publicPos !== false) ? substr($scriptPath, 0, $publicPos + 7) : '/UrbanEats/public';
 
 // Calculate cart count
 $cartItemCount = 0;
