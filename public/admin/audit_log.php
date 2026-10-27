@@ -25,8 +25,11 @@ $whereClauses = ['1=1'];
 $params = [];
 
 if (!empty($search)) {
-    $whereClauses[] = "(a.details LIKE :search OR u.full_name LIKE :search OR u.email LIKE :search OR a.ip_address LIKE :search)";
-    $params[':search'] = "%{$search}%";
+    $whereClauses[] = "(a.details LIKE :search_details OR u.full_name LIKE :search_name OR u.email LIKE :search_email OR a.ip_address LIKE :search_ip)";
+    $params[':search_details'] = "%{$search}%";
+    $params[':search_name'] = "%{$search}%";
+    $params[':search_email'] = "%{$search}%";
+    $params[':search_ip'] = "%{$search}%";
 }
 
 if (!empty($actionFilter)) {
