@@ -8,8 +8,8 @@
  * - Real-time kitchen inventory tracking with row-level locks
  * - Automated low-stock and depleted ingredient alerts
  * - Direct integration with official Goods Received Note (GRN) procurement system
- * - Kitchen wastage recording (damage, spillage, expired prep) and physical audits
- * - Audited stock movements history (linked with GRN inward receipts and Component C sales)
+ * - Formal Stock Adjustment Notes (SAN) module for wastage, spillage, expiration, and count reconciliation
+ * - Audited stock movements history (linked with GRN inward receipts, SAN vouchers, and Component C sales)
  */
 
 $currentPage = 'stock';
@@ -22,39 +22,52 @@ require_role(['kitchen_staff', 'admin']);
 $pdo = get_db_connection();
 $currentUserId = (int)$_SESSION['user_id'];
 
-// 1. Handle Kitchen Internal Stock Adjustments via Formal Stock Adjustment Note (SAN)
+// 1. Handle Formal Stock Adjustment Notes (SAN)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validate_csrf_or_fail();
 
-    $dishId       = (int)($_POST['dish_id'] ?? 0);
-    $movementType = trim($_POST['movement_type'] ?? '');
-    $quantity     = abs((int)($_POST['quantity'] ?? 0));
-    $reason       = trim($_POST['reason'] ?? '');
+    $dishId   = (int)($_POST['dish_id'] ?? 0);
+    $quantity = abs((int)($_POST['quantity'] ?? 0));
 
-    // Server-side input validation
-    if ($dishId <= 0 || $quantity <= 0 || $reason === '') {
-        set_flash('error', 'Please provide a valid dish, positive unit quantity, and operational reason.');
-    } elseif (!in_array($movementType, ['wastage', 'adjustment', 'restock'], true)) {
-        set_flash('error', 'Invalid movement type selected.');
+    // Direction: support direct 'direction' or map from legacy 'movement_type'
+    if (isset($_POST['direction'])) {
+        $direction = in_array($_POST['direction'], ['increase', 'decrease'], true) ? $_POST['direction'] : 'decrease';
+    } elseif (isset($_POST['movement_type'])) {
+        $direction = ($_POST['movement_type'] === 'restock') ? 'increase' : 'decrease';
     } else {
-        // Map to formal Stock Adjustment Note direction and classification
-        $direction = ($movementType === 'restock') ? 'increase' : 'decrease';
-        $sanType   = match ($movementType) {
+        $direction = 'decrease';
+    }
+
+    // Adjustment type / reason classification
+    if (!empty($_POST['adjustment_type'])) {
+        $adjustmentType = trim($_POST['adjustment_type']);
+    } elseif (!empty($_POST['movement_type'])) {
+        $adjustmentType = match ($_POST['movement_type']) {
             'restock'    => 'count_overage',
             'adjustment' => 'count_shortage',
             default      => 'wastage'
         };
+    } else {
+        $adjustmentType = 'wastage';
+    }
 
+    $rootCause        = trim($_POST['root_cause'] ?? $_POST['reason'] ?? '');
+    $correctiveAction = trim($_POST['corrective_action'] ?? '');
+
+    // Server-side input validation
+    if ($dishId <= 0 || $quantity <= 0 || $rootCause === '') {
+        set_flash('error', 'Please provide a valid dish, positive adjustment quantity, and documented root cause.');
+    } else {
         try {
             $sanResult = process_stock_adjustment_note(
                 $pdo,
                 $currentUserId,
                 $dishId,
-                $sanType,
+                $adjustmentType,
                 $direction,
                 $quantity,
-                $reason,
-                "Issued via Kitchen Inventory Dashboard"
+                $rootCause,
+                $correctiveAction ?: "Issued via Kitchen Stock Dashboard"
             );
 
             $dirWord = ($direction === 'increase') ? 'credited (+)' : 'deducted (-)';
@@ -108,6 +121,8 @@ $movementHistoryQuery = "
     LIMIT 15
 ";
 $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
+
+$nextSanPreview = generate_san_number($pdo);
 ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
@@ -187,54 +202,121 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
         </div>
     <?php endif; ?>
 
-    <!-- Kitchen Wastage & Internal Adjustment Form -->
+    <!-- Unified Stock Adjustment Note (SAN) Module -->
     <div style="background: white; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; margin-bottom: 2.5rem; box-shadow: var(--shadow-sm);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
             <div>
-                <h2 style="font-size: 1.25rem; margin: 0; color: var(--color-secondary);">Record Kitchen Wastage & Physical Audits</h2>
-                <span style="font-size: 0.85rem; color: var(--text-muted);">Record burned/spilled food wastage or physical stock take adjustments</span>
+                <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-primary); font-weight: 700;">
+                    Official Inventory Discrepancy & Wastage Control
+                </span>
+                <h2 style="font-size: 1.35rem; margin: 0.25rem 0 0 0; color: var(--color-secondary);">
+                    Issue Stock Adjustment Note (SAN)
+                </h2>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">
+                    Document kitchen prep spoilage, station spillage, expiration, or physical stocktake reconciliations
+                </span>
             </div>
-            <a href="<?= $appBase ?>/menu/grn.php" style="font-size: 0.85rem; font-weight: 700; color: #16a34a;">
-                Need to add stock from supplier? Use GRN &rarr;
-            </a>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div style="font-size: 0.85rem; font-weight: 700; color: var(--color-primary); background: var(--bg-page); padding: 0.5rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                    Voucher #: <code><?= $nextSanPreview ?></code>
+                </div>
+                <a href="<?= $appBase ?>/menu/adjustment_notes.php" class="btn btn-outline" style="font-size: 0.85rem;">
+                    📋 All SAN Vouchers & Audit Trail &rarr;
+                </a>
+            </div>
         </div>
-        
-        <form action="<?= $appBase ?>/menu/stock.php" method="POST" class="form-row" style="align-items: flex-end;">
+
+        <form action="<?= $appBase ?>/menu/stock.php" method="POST" id="stockSanForm">
             <?= csrf_field() ?>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label for="dish_id" class="form-label">Select Dish <span class="required">*</span></label>
-                <select id="dish_id" name="dish_id" class="form-control" required>
-                    <option value="">-- Choose Dish --</option>
-                    <?php foreach ($inventoryList as $invItem): ?>
-                        <option value="<?= $invItem['id'] ?>">
-                            <?= e($invItem['name']) ?> (Current: <?= $invItem['current_stock'] ?> units)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="form-row">
+                <!-- Dish Selection -->
+                <div class="form-group" style="flex: 2;">
+                    <label for="san_dish_id" class="form-label">Select Dish / Stock Item <span class="required">*</span></label>
+                    <select id="san_dish_id" name="dish_id" class="form-control" required onchange="handleStockDishChange()">
+                        <option value="">-- Choose Menu Dish --</option>
+                        <?php foreach ($inventoryList as $invItem): ?>
+                            <option value="<?= $invItem['id'] ?>" data-stock="<?= (int)$invItem['current_stock'] ?>" data-name="<?= e($invItem['name']) ?>" data-category="<?= e($invItem['category_name']) ?>">
+                                <?= e($invItem['name']) ?> (Current Stock: <?= (int)$invItem['current_stock'] ?> units) [<?= e($invItem['category_name']) ?>]
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- Adjustment Direction -->
+                <div class="form-group" style="flex: 1.2;">
+                    <label for="san_direction" class="form-label">Adjustment Direction <span class="required">*</span></label>
+                    <select id="san_direction" name="direction" class="form-control" required onchange="handleStockDirectionChange()">
+                        <option value="decrease" selected>🔴 Deduction / Wastage (Reduce Stock)</option>
+                        <option value="increase">🟢 Count Overage / Credit (Add Stock)</option>
+                    </select>
+                </div>
+
+                <!-- Adjustment Category Type -->
+                <div class="form-group" style="flex: 1.5;">
+                    <label for="san_type" class="form-label">Reason Classification <span class="required">*</span></label>
+                    <select id="san_type" name="adjustment_type" class="form-control" required>
+                        <option value="wastage" selected>Kitchen Prep Spoilage / Damage</option>
+                        <option value="spillage">Cooking Station Spillage / Dropped</option>
+                        <option value="expired">Passed Shelf Life / Cold Chain Expiry</option>
+                        <option value="count_shortage">Physical Stocktake Shortage</option>
+                        <option value="internal_sampling">Head Chef Sensory Tasting / QA Audit</option>
+                        <option value="count_overage" style="display: none;">Physical Stocktake Overage Found</option>
+                    </select>
+                </div>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label for="movement_type" class="form-label">Audit Type <span class="required">*</span></label>
-                <select id="movement_type" name="movement_type" class="form-control" required>
-                    <option value="wastage">➖ Kitchen Wastage (Damage / Spillage / Expired)</option>
-                    <option value="adjustment">🔄 Physical Stock Count Discrepancy</option>
-                    <option value="restock">➕ Emergency Manual Restock</option>
-                </select>
+            <!-- Dynamic Stock Calculation & Units Row -->
+            <div style="background: var(--bg-page); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+                <div class="form-row" style="margin-bottom: 0; align-items: center;">
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label for="san_quantity" class="form-label">Units to Adjust <span class="required">*</span></label>
+                        <input type="number" id="san_quantity" name="quantity" min="1" class="form-control" placeholder="Enter units (e.g. 3)" required oninput="updateStockSanPreview()">
+                    </div>
+                    <div style="flex: 2; display: flex; align-items: center; justify-content: space-around; background: white; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                        <div style="text-align: center;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Current Ledger Stock</span>
+                            <div id="previewCurrentStock" style="font-size: 1.25rem; font-weight: 800; color: #475569;">— units</div>
+                        </div>
+                        <div id="previewOperator" style="font-size: 1.5rem; font-weight: 800; color: #dc2626;">−</div>
+                        <div style="text-align: center;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Adjustment Qty</span>
+                            <div id="previewAdjUnits" style="font-size: 1.25rem; font-weight: 800; color: #dc2626;">0 units</div>
+                        </div>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-muted);">=</div>
+                        <div style="text-align: center;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Resulting Stock</span>
+                            <div id="previewResultingStock" style="font-size: 1.35rem; font-weight: 800; color: #0284c7;">— units</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="stockWarning" style="display: none; margin-top: 0.75rem; color: #dc2626; font-size: 0.85rem; font-weight: 600;">
+                    ⚠️ Warning: Adjustment quantity exceeds available stock! Stock cannot drop below zero.
+                </div>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label for="quantity" class="form-label">Quantity (Units) <span class="required">*</span></label>
-                <input type="number" min="1" id="quantity" name="quantity" class="form-control" placeholder="e.g. 5" required>
+            <!-- Root Cause & Corrective Action Inputs -->
+            <div class="form-row">
+                <div class="form-group" style="flex: 1.5;">
+                    <label for="san_root_cause" class="form-label">Documented Root Cause & Circumstances <span class="required">*</span></label>
+                    <textarea id="san_root_cause" name="root_cause" rows="2" class="form-control" placeholder="Provide factual explanation: e.g. Dropped tray during lunch rush / Refrigerator 2 thermostat fluctuated / Count discrepancy on closing audit." required></textarea>
+                    <p class="form-hint">Mandatory for supervisory sign-off and food safety compliance.</p>
+                </div>
+
+                <div class="form-group" style="flex: 1.5;">
+                    <label for="san_corrective_action" class="form-label">Corrective & Preventative Action Taken</label>
+                    <textarea id="san_corrective_action" name="corrective_action" rows="2" class="form-control" placeholder="e.g. Fridge thermostat recalibrated / Staff retrained on handling protocol / Disposed per hygiene guidelines."></textarea>
+                    <p class="form-hint">Preventative measures taken to prevent recurring wastage.</p>
+                </div>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0; flex: 1.5;">
-                <label for="reason" class="form-label">Operational Reason <span class="required">*</span></label>
-                <input type="text" id="reason" name="reason" class="form-control" placeholder="e.g. Dropped tray during prep / End of day physical count" required>
-            </div>
-
-            <div>
-                <button type="submit" class="btn btn-secondary">Record Audit</button>
+            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <button type="submit" class="btn btn-primary btn-lg" id="sanSubmitBtn">
+                    📝 Issue & Post Stock Adjustment Note
+                </button>
+                <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-outline btn-lg" style="color: #16a34a; border-color: #16a34a;">
+                    📥 Need Supplier Restock? Create GRN &rarr;
+                </a>
             </div>
         </form>
     </div>
@@ -294,7 +376,7 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
     <div style="margin-top: 3rem; margin-bottom: 1rem;">
         <h2 style="font-size: 1.35rem; color: var(--color-secondary);">Recent Stock Movements History</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted);">
-            Audited trail of inward supplier GRNs, automated checkout sales deductions, and kitchen wastage.
+            Audited trail of inward supplier GRNs, automated checkout sales deductions, and formal Stock Adjustment Notes (SAN).
         </p>
     </div>
 
@@ -349,5 +431,101 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
         </table>
     </div>
 </div>
+
+<script>
+let currentSelectedStock = 0;
+
+function handleStockDishChange() {
+    const dishSelect = document.getElementById('san_dish_id');
+    const selectedOpt = dishSelect.options[dishSelect.selectedIndex];
+    const previewCurrent = document.getElementById('previewCurrentStock');
+
+    if (dishSelect.value && selectedOpt && selectedOpt.dataset.stock !== undefined) {
+        currentSelectedStock = parseInt(selectedOpt.dataset.stock) || 0;
+        previewCurrent.textContent = currentSelectedStock + ' units';
+    } else {
+        currentSelectedStock = 0;
+        previewCurrent.textContent = '— units';
+    }
+    updateStockSanPreview();
+}
+
+function handleStockDirectionChange() {
+    const dir = document.getElementById('san_direction').value;
+    const typeSelect = document.getElementById('san_type');
+    const previewOp = document.getElementById('previewOperator');
+    const previewUnits = document.getElementById('previewAdjUnits');
+
+    if (dir === 'increase') {
+        previewOp.textContent = '+';
+        previewOp.style.color = '#16a34a';
+        previewUnits.style.color = '#16a34a';
+
+        // Filter types for increase
+        typeSelect.value = 'count_overage';
+        for (let opt of typeSelect.options) {
+            opt.style.display = (opt.value === 'count_overage') ? 'block' : 'none';
+        }
+    } else {
+        previewOp.textContent = '−';
+        previewOp.style.color = '#dc2626';
+        previewUnits.style.color = '#dc2626';
+
+        // Filter types for decrease
+        typeSelect.value = 'wastage';
+        for (let opt of typeSelect.options) {
+            opt.style.display = (opt.value === 'count_overage') ? 'none' : 'block';
+        }
+    }
+    updateStockSanPreview();
+}
+
+function updateStockSanPreview() {
+    const qtyInput = document.getElementById('san_quantity');
+    const qty = parseInt(qtyInput.value) || 0;
+    const dir = document.getElementById('san_direction').value;
+    const warning = document.getElementById('stockWarning');
+    const submitBtn = document.getElementById('sanSubmitBtn');
+    const previewUnits = document.getElementById('previewAdjUnits');
+    const previewResult = document.getElementById('previewResultingStock');
+
+    previewUnits.textContent = qty + ' units';
+
+    if (!document.getElementById('san_dish_id').value) {
+        previewResult.textContent = '— units';
+        warning.style.display = 'none';
+        submitBtn.removeAttribute('disabled');
+        return;
+    }
+
+    let resulting = 0;
+    if (dir === 'decrease') {
+        resulting = currentSelectedStock - qty;
+        if (resulting < 0) {
+            warning.style.display = 'block';
+            submitBtn.setAttribute('disabled', 'disabled');
+            previewResult.textContent = resulting + ' units (Invalid)';
+            previewResult.style.color = '#dc2626';
+            return;
+        } else {
+            warning.style.display = 'none';
+            submitBtn.removeAttribute('disabled');
+            previewResult.style.color = '#0284c7';
+        }
+    } else {
+        resulting = currentSelectedStock + qty;
+        warning.style.display = 'none';
+        submitBtn.removeAttribute('disabled');
+        previewResult.style.color = '#0284c7';
+    }
+
+    previewResult.textContent = resulting + ' units';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    handleStockDirectionChange();
+    handleStockDishChange();
+});
+</script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>
