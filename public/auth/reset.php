@@ -7,9 +7,10 @@
  * updates user password hash, and marks token as used.
  */
 
-$currentPage = 'reset';
-$pageTitle = 'Create New Password - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 $pdo = get_db_connection();
 $token = trim($_GET['token'] ?? ($_POST['token'] ?? ''));
@@ -79,6 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isValidToken) {
         exit;
     }
 }
+
+$currentPage = 'reset';
+$pageTitle = 'Create New Password - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="auth-wrapper">

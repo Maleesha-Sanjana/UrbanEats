@@ -7,9 +7,10 @@
  * Per assignment brief: The reset link is displayed on-screen for testing/evaluation.
  */
 
-$currentPage = 'forgot';
-$pageTitle = 'Forgot Password - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 $pdo = get_db_connection();
 $generatedLink = '';
@@ -57,6 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$currentPage = 'forgot';
+$pageTitle = 'Forgot Password - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="auth-wrapper">
