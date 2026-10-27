@@ -109,11 +109,12 @@ function reduce_stock(PDO $pdo, int $dishId, int $quantity): bool {
         UPDATE inventory
         SET current_stock = current_stock - :qty,
             updated_at = NOW()
-        WHERE dish_id = :dish_id AND current_stock >= :qty
+        WHERE dish_id = :dish_id AND current_stock >= :min_qty
     ");
 
     $stmt->execute([
         ':qty'     => $quantity,
+        ':min_qty' => $quantity,
         ':dish_id' => $dishId
     ]);
 

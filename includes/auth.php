@@ -253,7 +253,9 @@ function attempt_login(PDO $pdo, string $email, string $password): array {
     record_login_attempt($pdo, $ip, $email, true);
 
     // Session regeneration prevents session fixation attacks
-    session_regenerate_id(true);
+    if (!headers_sent() && session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
 
     $_SESSION['user_id']       = $user['id'];
     $_SESSION['user_name']     = $user['full_name'];

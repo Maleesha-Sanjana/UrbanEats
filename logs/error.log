@@ -1,0 +1,13 @@
+[2026-10-27 10:33:51] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/index.php, IP: 127.0.0.1)
+[2026-10-27 10:34:13] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/menu/list.php, IP: 127.0.0.1)
+[2026-10-27 10:34:13] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/menu/detail.php?id=1, IP: 127.0.0.1)
+[2026-10-27 10:34:13] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/auth/login.php, IP: 127.0.0.1)
+[2026-10-27 10:34:13] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/auth/register.php, IP: 127.0.0.1)
+[2026-10-27 10:34:13] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: /UrbanEats/public/orders/cart.php, IP: 127.0.0.1)
+[2026-10-27 10:36:21] [UNKNOWN (8192)] Constant PDO::MYSQL_ATTR_INIT_COMMAND is deprecated since 8.5, use Pdo\Mysql::ATTR_INIT_COMMAND instead in /Users/mac/Documents/GitHub/UrbanEats/config/db.php on line 68 (URI: CLI, IP: 127.0.0.1)
+[2026-10-27 10:36:22] [WARNING] session_regenerate_id(): Session ID cannot be regenerated after headers have already been sent (sent from /Users/mac/Documents/GitHub/UrbanEats/tests/test_end_to_end.php on line 20) in /Users/mac/Documents/GitHub/UrbanEats/includes/auth.php on line 256 (URI: CLI, IP: 127.0.0.1)
+[2026-10-27 10:36:22] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[HY093]: Invalid parameter number
+Stack Trace:
+#0 /Users/mac/Documents/GitHub/UrbanEats/includes/functions.php(115): PDOStatement->execute(Array)
+#1 /Users/mac/Documents/GitHub/UrbanEats/tests/test_end_to_end.php(75): reduce_stock(Object(PDO), 1, 2)
+#2 {main} in /Users/mac/Documents/GitHub/UrbanEats/includes/functions.php on line 115 (URI: CLI, IP: 127.0.0.1)

@@ -61,11 +61,13 @@ function get_db_connection(): PDO {
             $dbConfig['charset']
         );
 
+        $initCommandAttr = defined('Pdo\Mysql::ATTR_INIT_COMMAND') ? Pdo\Mysql::ATTR_INIT_COMMAND : (defined('PDO::MYSQL_ATTR_INIT_COMMAND') ? PDO::MYSQL_ATTR_INIT_COMMAND : 1002);
+
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$dbConfig['charset']} COLLATE {$dbConfig['charset']}_unicode_ci"
+            $initCommandAttr             => "SET NAMES {$dbConfig['charset']} COLLATE {$dbConfig['charset']}_unicode_ci"
         ];
 
         try {
