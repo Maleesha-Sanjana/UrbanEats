@@ -22,7 +22,7 @@ require_role(['kitchen_staff', 'admin']);
 $pdo = get_db_connection();
 $currentUserId = (int)$_SESSION['user_id'];
 
-// 1. Handle Kitchen Internal Stock Adjustments (Wastage / Physical Count Audits)
+// 1. Handle Kitchen Internal Stock Adjustments via Formal Stock Adjustment Note (SAN)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validate_csrf_or_fail();
 
@@ -37,56 +37,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!in_array($movementType, ['wastage', 'adjustment', 'restock'], true)) {
         set_flash('error', 'Invalid movement type selected.');
     } else {
-        // VIVA: Lock inventory row with FOR UPDATE inside a transaction to prevent race conditions
-        $pdo->beginTransaction();
+        // Map to formal Stock Adjustment Note direction and classification
+        $direction = ($movementType === 'restock') ? 'increase' : 'decrease';
+        $sanType   = match ($movementType) {
+            'restock'    => 'count_overage',
+            'adjustment' => 'count_shortage',
+            default      => 'wastage'
+        };
+
         try {
-            $lockInvStmt = $pdo->prepare("SELECT current_stock FROM inventory WHERE dish_id = :id FOR UPDATE");
-            $lockInvStmt->execute([':id' => $dishId]);
-            $currentStock = (int)$lockInvStmt->fetchColumn();
-
-            // Calculate delta
-            $stockDelta = ($movementType === 'restock') ? $quantity : -$quantity;
-            $updatedStockBalance = $currentStock + $stockDelta;
-
-            // Prevent stock balance from ever dropping below zero
-            if ($updatedStockBalance < 0) {
-                throw new Exception("Wastage deduction exceeds available kitchen inventory ({$currentStock} units currently in stock).");
-            }
-
-            // Update master inventory level
-            $updateInventoryStmt = $pdo->prepare("
-                UPDATE inventory 
-                SET current_stock = :new_stock, updated_at = NOW() 
-                WHERE dish_id = :dish_id
-            ");
-            $updateInventoryStmt->execute([
-                ':new_stock' => $updatedStockBalance, 
-                ':dish_id'   => $dishId
-            ]);
-
-            // Insert detailed audit trail in stock_movements
-            record_stock_movement(
-                $pdo, 
-                $dishId, 
-                $currentUserId, 
-                $movementType, 
-                $stockDelta, 
-                $reason
-            );
-
-            // Log high-level action to centralized system audit log
-            log_action(
+            $sanResult = process_stock_adjustment_note(
                 $pdo,
-                'STOCK_' . strtoupper($movementType),
-                "Adjusted dish ID #{$dishId} by {$stockDelta} units. New balance: {$updatedStockBalance}. Reason: {$reason}",
-                $currentUserId
+                $currentUserId,
+                $dishId,
+                $sanType,
+                $direction,
+                $quantity,
+                $reason,
+                "Issued via Kitchen Inventory Dashboard"
             );
 
-            $pdo->commit();
-            set_flash('success', "Stock updated successfully! New balance: {$updatedStockBalance} units.");
+            $dirWord = ($direction === 'increase') ? 'credited (+)' : 'deducted (-)';
+            set_flash('success', "Stock Adjustment Note #{$sanResult['san_number']} issued! {$quantity} units {$dirWord} for '{$sanResult['dish_name']}'. Verified balance: {$sanResult['stock_before']} → {$sanResult['stock_after']} units.");
+            header("Location: {$appBase}/menu/adjustment_notes.php?view_id=" . $sanResult['san_id']);
+            exit;
         } catch (Exception $e) {
-            $pdo->rollBack();
-            set_flash('error', 'Inventory Adjustment Failed: ' . $e->getMessage());
+            set_flash('error', 'Stock Adjustment Failed: ' . $e->getMessage());
         }
     }
 
@@ -144,11 +120,18 @@ $movementsHistory = $pdo->query($movementHistoryQuery)->fetchAll();
             <h1 style="font-size: 2rem; margin-top: 0.25rem;">Live Stock & Inventory Dashboard</h1>
         </div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-primary" style="background: #16a34a;">
-                📋 Goods Received Notes (GRN)
+            <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-primary" style="background: #16a34a; border-color: #16a34a;">
+                📥 Goods Received Notes (GRN)
             </a>
-            <a href="<?= $appBase ?>/menu/manage_dishes.php" class="btn btn-secondary">🍲 Catalogue Management</a>
-            <a href="<?= $appBase ?>/orders/kitchen.php" class="btn btn-outline">🍳 Live Kitchen Queue</a>
+            <a href="<?= $appBase ?>/menu/adjustment_notes.php" class="btn btn-secondary">
+                📝 Stock Adjustment Notes (SAN)
+            </a>
+            <a href="<?= $appBase ?>/menu/suppliers.php" class="btn btn-outline">
+                🚚 Supplier Master
+            </a>
+            <a href="<?= $appBase ?>/menu/manage_dishes.php" class="btn btn-outline">
+                🍲 Catalogue
+            </a>
         </div>
     </div>
 
