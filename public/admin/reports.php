@@ -9,8 +9,9 @@
 
 $currentPage = 'reports';
 $pageTitle = 'Sales Reports & Analytics - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_role('admin');
 
 $pdo = get_db_connection();
@@ -19,8 +20,29 @@ $pdo = get_db_connection();
 $defaultStartDate = date('Y-m-01'); // Start of current month
 $defaultEndDate = date('Y-m-d');
 
-$startDate = trim($_GET['start_date'] ?? $defaultStartDate);
-$endDate = trim($_GET['end_date'] ?? $defaultEndDate);
+$rawStartDate = $_GET['start_date'] ?? $defaultStartDate;
+$rawEndDate = $_GET['end_date'] ?? $defaultEndDate;
+$startDate = is_string($rawStartDate) ? trim($rawStartDate) : '';
+$endDate = is_string($rawEndDate) ? trim($rawEndDate) : '';
+$isValidDate = static function (string $date): bool {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return false;
+    }
+
+    [$year, $month, $day] = array_map('intval', explode('-', $date));
+    return $year >= 1000 && checkdate($month, $day, $year);
+};
+
+if (!$isValidDate($startDate) || !$isValidDate($endDate) || $startDate > $endDate) {
+    http_response_code(400);
+    render_error_page(
+        400,
+        'Invalid Report Date Range',
+        'Choose valid start and end dates, with the start date on or before the end date.',
+        "{$appBase}/admin/reports.php"
+    );
+    exit;
+}
 
 $filterStart = $startDate . ' 00:00:00';
 $filterEnd = $endDate . ' 23:59:59';
@@ -105,6 +127,8 @@ $dailyStmt = $pdo->prepare("
 $dailyStmt->execute([':start_date' => $filterStart, ':end_date' => $filterEnd]);
 $dailyTrend = $dailyStmt->fetchAll();
 ?>
+
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
     <!-- Page Header -->

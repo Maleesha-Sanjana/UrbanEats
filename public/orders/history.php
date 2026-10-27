@@ -9,8 +9,9 @@
 
 $currentPage = 'orders';
 $pageTitle = 'My Order History - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_login();
 
 $pdo = get_db_connection();
@@ -46,6 +47,8 @@ $ordersStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 $ordersStmt->execute();
 $orders = $ordersStmt->fetchAll();
 ?>
+
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
     <!-- Page Header -->

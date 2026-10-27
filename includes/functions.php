@@ -28,6 +28,15 @@ function e(?string $value): string {
 }
 
 /**
+ * Determine the public application URL from the current PHP script path.
+ */
+function get_app_base_url(): string {
+    $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+    $publicPos = strpos($scriptPath, '/public');
+    return ($publicPos !== false) ? substr($scriptPath, 0, $publicPos + 7) : '/UrbanEats/public';
+}
+
+/**
  * Format currency in Sri Lankan Rupees (LKR)
  */
 function format_price(float|int|string $amount): string {
@@ -96,12 +105,22 @@ function render_flash_messages(): string {
 
 /* ==========================================================================
    COMPONENT B SHARED CONTRACT FUNCTIONS (Menu & Inventory)
+   Student 2: Denuka (Component B Owner)
    ========================================================================== */
 
 /**
  * Transaction-Safe Stock Deduction
- * Component C calls this at checkout. Uses an atomic conditional UPDATE
- * that guarantees current_stock never falls below zero, even under concurrent checkouts.
+ * Component C calls this contract function at checkout.
+ * 
+ * VIVA QUESTIONS & EXPLANATIONS:
+ * 1. Why conditional UPDATE instead of read-then-write?
+ *    If we did `SELECT stock` then `if (stock >= qty) UPDATE stock`, two concurrent requests
+ *    could both read stock = 1 simultaneously, both pass the check, and both decrement,
+ *    causing stock to drop to -1 (race condition / overselling).
+ * 2. How does atomic conditional UPDATE fix this?
+ *    The query `WHERE dish_id = :dish_id AND current_stock >= :min_qty` is executed under MySQL
+ *    row-level lock. Only the first transaction decrements and gets rowCount = 1; the second transaction
+ *    sees current_stock < min_qty, gets rowCount = 0, and triggers an exception that rolls back the order.
  *
  * @param PDO $pdo Active PDO connection with ongoing transaction
  * @param int $dishId Dish primary key
@@ -164,9 +183,200 @@ function record_stock_movement(
 }
 
 /**
+ * Generate Next Sequential GRN Number (e.g. GRN-20261027-1005)
+ * Student 2: Denuka (Component B Owner)
+ */
+function generate_grn_number(PDO $pdo): string {
+    $todayPrefix = 'GRN-' . date('Ymd') . '-';
+    $stmt = $pdo->prepare("SELECT grn_number FROM grn_headers WHERE grn_number LIKE :prefix ORDER BY id DESC LIMIT 1");
+    $stmt->execute([':prefix' => $todayPrefix . '%']);
+    $lastNum = $stmt->fetchColumn();
+
+    if ($lastNum) {
+        $parts = explode('-', $lastNum);
+        $lastSeq = (int)end($parts);
+        $nextSeq = $lastSeq + 1;
+    } else {
+        $nextSeq = 1001;
+    }
+    return $todayPrefix . $nextSeq;
+}
+
+/**
+ * Process and record an official Goods Received Note (GRN)
+ * Student 2: Denuka (Component B Owner)
+ *
+ * Executes inside an atomic transaction:
+ * - Validates supplier details and received items
+ * - Inserts header record into grn_headers
+ * - Inserts line records into grn_items
+ * - Increments inventory stock in inventory table
+ * - Records audited movements in stock_movements (type='restock')
+ * - Writes to central audit_log
+ * - Full ACID rollback on any failure
+ */
+function process_grn_receipt(
+    PDO $pdo,
+    int $userId,
+    string $supplierName,
+    ?string $invoiceReference,
+    ?string $notes,
+    array $items
+): array {
+    if (empty(trim($supplierName))) {
+        throw new InvalidArgumentException("Supplier name is required to process a Goods Received Note.");
+    }
+    if (empty($items)) {
+        throw new InvalidArgumentException("At least one valid dish item must be included in the GRN.");
+    }
+
+    $grnNumber = generate_grn_number($pdo);
+    $totalCost = 0.0;
+
+    // Pre-calculate line totals and validate
+    $validatedItems = [];
+    foreach ($items as $idx => $item) {
+        $dishId   = (int)($item['dish_id'] ?? 0);
+        $qty      = (int)($item['quantity'] ?? 0);
+        $unitCost = (float)($item['unit_cost'] ?? 0.0);
+        $batchNo  = trim($item['batch_number'] ?? '');
+        $expiry   = !empty($item['expiry_date']) ? trim($item['expiry_date']) : null;
+
+        if ($dishId <= 0 || $qty <= 0) {
+            continue; // Skip invalid or blank rows
+        }
+
+        $lineTotal = round($qty * $unitCost, 2);
+        $totalCost += $lineTotal;
+
+        $validatedItems[] = [
+            'dish_id'           => $dishId,
+            'quantity_received' => $qty,
+            'unit_cost'         => $unitCost,
+            'line_total'        => $lineTotal,
+            'batch_number'      => $batchNo ?: null,
+            'expiry_date'       => $expiry
+        ];
+    }
+
+    if (empty($validatedItems)) {
+        throw new InvalidArgumentException("Please specify at least one item with a positive quantity.");
+    }
+
+    $pdo->beginTransaction();
+    try {
+        // 1. Insert Master GRN Header
+        $headerStmt = $pdo->prepare("
+            INSERT INTO grn_headers (grn_number, supplier_name, invoice_reference, received_by_user_id, notes, total_cost, received_at, created_at)
+            VALUES (:grn_num, :supplier, :invoice_ref, :user_id, :notes, :total_cost, NOW(), NOW())
+        ");
+        $headerStmt->execute([
+            ':grn_num'     => $grnNumber,
+            ':supplier'    => trim($supplierName),
+            ':invoice_ref' => !empty($invoiceReference) ? trim($invoiceReference) : null,
+            ':user_id'     => $userId,
+            ':notes'       => !empty($notes) ? trim($notes) : null,
+            ':total_cost'  => $totalCost
+        ]);
+        $grnId = (int)$pdo->lastInsertId();
+
+        // 2. Insert GRN Items and update Inventory
+        $itemStmt = $pdo->prepare("
+            INSERT INTO grn_items (grn_id, dish_id, quantity_received, unit_cost, line_total, batch_number, expiry_date)
+            VALUES (:grn_id, :dish_id, :qty, :cost, :total, :batch, :expiry)
+        ");
+
+        $updInvStmt = $pdo->prepare("
+            UPDATE inventory 
+            SET current_stock = current_stock + :qty, updated_at = NOW() 
+            WHERE dish_id = :dish_id
+        ");
+
+        $checkInvStmt = $pdo->prepare("SELECT id FROM inventory WHERE dish_id = :dish_id");
+        $createInvStmt = $pdo->prepare("
+            INSERT INTO inventory (dish_id, current_stock, reorder_level, updated_at)
+            VALUES (:dish_id, :qty, 10, NOW())
+        ");
+
+        foreach ($validatedItems as $vItem) {
+            // Insert line item
+            $itemStmt->execute([
+                ':grn_id'  => $grnId,
+                ':dish_id' => $vItem['dish_id'],
+                ':qty'     => $vItem['quantity_received'],
+                ':cost'    => $vItem['unit_cost'],
+                ':total'   => $vItem['line_total'],
+                ':batch'   => $vItem['batch_number'],
+                ':expiry'  => $vItem['expiry_date']
+            ]);
+
+            // Ensure inventory row exists; update or insert
+            $checkInvStmt->execute([':dish_id' => $vItem['dish_id']]);
+            if ($checkInvStmt->fetch()) {
+                $updInvStmt->execute([
+                    ':qty'     => $vItem['quantity_received'],
+                    ':dish_id' => $vItem['dish_id']
+                ]);
+            } else {
+                $createInvStmt->execute([
+                    ':dish_id' => $vItem['dish_id'],
+                    ':qty'     => $vItem['quantity_received']
+                ]);
+            }
+
+            // Record in stock_movements for audit history and reports
+            $movementReason = "Received via {$grnNumber} (Supplier: {$supplierName})";
+            if (!empty($vItem['batch_number'])) {
+                $movementReason .= " [Batch: {$vItem['batch_number']}]";
+            }
+            record_stock_movement(
+                $pdo,
+                $vItem['dish_id'],
+                $userId,
+                'restock',
+                $vItem['quantity_received'],
+                $movementReason
+            );
+        }
+
+        // 3. Central Audit Log
+        log_action(
+            $pdo,
+            'GRN_CREATED',
+            "Generated Goods Received Note {$grnNumber} from {$supplierName} (" . count($validatedItems) . " items, Total: LKR " . number_format($totalCost, 2) . ")",
+            $userId
+        );
+
+        $pdo->commit();
+
+        return [
+            'success'     => true,
+            'grn_id'      => $grnId,
+            'grn_number'  => $grnNumber,
+            'total_cost'  => $totalCost,
+            'items_count' => count($validatedItems)
+        ];
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/**
  * Secure image upload helper for dishes
- * Validates file extension, MIME type, file size, generates random filename,
- * and saves outside executable web root paths.
+ * Student 2: Denuka (Component B Owner)
+ *
+ * VIVA QUESTIONS & EXPLANATIONS:
+ * 1. What checks does image upload perform?
+ *    - Checks PHP upload error codes (ensures partial/corrupted uploads are rejected).
+ *    - Enforces maximum file size limit (2MB) preventing denial-of-service via huge payloads.
+ *    - Server-side MIME type verification using PHP's `finfo(FILEINFO_MIME_TYPE)`.
+ *    - File extension check against a strict whitelist (jpg, jpeg, png, webp).
+ *    - Generates a cryptographically random, unguessable filename (`random_bytes(16)`).
+ * 2. Why is file extension alone not enough?
+ *    An attacker could rename a malicious executable PHP script (e.g. `shell.php` -> `shell.jpg`).
+ *    Checking extension alone would accept it, which could lead to remote code execution (RCE).
+ *    Using `finfo` inspects magic bytes at the start of the binary file to verify it is genuinely an image.
  */
 function upload_dish_image(array $file): array {
     if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -324,8 +534,9 @@ function get_cart_details(PDO $pdo): array {
  * - Collected -> Completed
  * - Completed -> (Terminal)
  * - Cancelled -> (Terminal)
+ * When provided, $orderType restricts delivery-only and pickup-only transitions.
  */
-function is_valid_status_transition(string $currentStatus, string $newStatus): bool {
+function is_valid_status_transition(string $currentStatus, string $newStatus, ?string $orderType = null): bool {
     $transitions = [
         'Placed' => ['Preparing', 'Cancelled'],
         'Preparing' => ['Ready', 'Cancelled'],
@@ -340,22 +551,35 @@ function is_valid_status_transition(string $currentStatus, string $newStatus): b
         return false;
     }
 
-    return in_array($newStatus, $transitions[$currentStatus], true);
+    if (!in_array($newStatus, $transitions[$currentStatus], true)) {
+        return false;
+    }
+
+    if ($orderType === 'delivery' && in_array($newStatus, ['Collected'], true)) {
+        return false;
+    }
+    if ($orderType === 'pickup' && in_array($newStatus, ['Out for Delivery'], true)) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
  * Retrieve coupon details and validate constraints
  */
-function validate_coupon(PDO $pdo, string $code, float $orderSubtotal): array {
+function validate_coupon(PDO $pdo, string $code, float $orderSubtotal, bool $lockForUpdate = false): array {
     $code = trim(strtoupper($code));
     if (empty($code)) {
         return ['valid' => false, 'error' => 'Please enter a coupon code.'];
     }
 
+    $lockClause = $lockForUpdate ? ' FOR UPDATE' : '';
     $stmt = $pdo->prepare("
-        SELECT * FROM coupons
-        WHERE UPPER(code) = :code AND is_active = 1
-        LIMIT 1
+        SELECT *, (expires_at >= NOW()) AS is_unexpired
+        FROM coupons
+        WHERE code = :code AND is_active = 1
+        LIMIT 1{$lockClause}
     ");
     $stmt->execute([':code' => $code]);
     $coupon = $stmt->fetch();
@@ -365,7 +589,7 @@ function validate_coupon(PDO $pdo, string $code, float $orderSubtotal): array {
     }
 
     // Expiry check
-    if (strtotime($coupon['expires_at']) < time()) {
+    if (!(bool)$coupon['is_unexpired']) {
         return ['valid' => false, 'error' => 'This coupon has expired.'];
     }
 

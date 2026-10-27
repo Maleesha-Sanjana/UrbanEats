@@ -11,3 +11,38 @@ Stack Trace:
 #0 /Users/mac/Documents/GitHub/UrbanEats/includes/functions.php(115): PDOStatement->execute(Array)
 #1 /Users/mac/Documents/GitHub/UrbanEats/tests/test_end_to_end.php(75): reduce_stock(Object(PDO), 1, 2)
 #2 {main} in /Users/mac/Documents/GitHub/UrbanEats/includes/functions.php on line 115 (URI: CLI, IP: 127.0.0.1)
+[2026-10-27 16:19:59] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'urbaneats_db.categories' doesn't exist
+Stack Trace:
+#0 C:\xampp\htdocs\UrbanEats\public\index.php(14): PDO->query('\r\n    SELECT c....')
+#1 {main} in C:\xampp\htdocs\UrbanEats\public\index.php on line 14 (URI: /UrbanEats/public/index.php, IP: ::1)
+[2026-10-27 16:20:20] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'urbaneats_db.categories' doesn't exist
+Stack Trace:
+#0 C:\xampp\htdocs\UrbanEats\public\index.php(14): PDO->query('\r\n    SELECT c....')
+#1 {main} in C:\xampp\htdocs\UrbanEats\public\index.php on line 14 (URI: /UrbanEats/public/index.php, IP: ::1)
+[2026-10-27 16:20:34] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'urbaneats_db.categories' doesn't exist
+Stack Trace:
+#0 C:\xampp\htdocs\UrbanEats\public\index.php(14): PDO->query('\r\n    SELECT c....')
+#1 {main} in C:\xampp\htdocs\UrbanEats\public\index.php on line 14 (URI: /UrbanEats/public/index.php, IP: ::1)
+[2026-10-27 16:20:37] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'urbaneats_db.categories' doesn't exist
+Stack Trace:
+#0 C:\xampp\htdocs\UrbanEats\public\index.php(14): PDO->query('\r\n    SELECT c....')
+#1 {main} in C:\xampp\htdocs\UrbanEats\public\index.php on line 14 (URI: /UrbanEats/public/index.php, IP: ::1)
+[2026-10-27 16:20:37] [UNCAUGHT EXCEPTION] PDOException: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'urbaneats_db.categories' doesn't exist
+Stack Trace:
+#0 C:\xampp\htdocs\UrbanEats\public\index.php(14): PDO->query('\r\n    SELECT c....')
+#1 {main} in C:\xampp\htdocs\UrbanEats\public\index.php on line 14 (URI: /UrbanEats/public/index.php, IP: ::1)
+[2026-10-27 17:03:28] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:143) in C:\xampp\htdocs\UrbanEats\public\orders\cart.php on line 104 (URI: /UrbanEats/public/orders/cart.php, IP: ::1)
+[2026-10-27 17:05:37] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:147) in C:\xampp\htdocs\UrbanEats\public\orders\cart.php on line 104 (URI: /UrbanEats/public/orders/cart.php, IP: ::1)
+[2026-10-27 17:06:11] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:148) in C:\xampp\htdocs\UrbanEats\public\orders\cart.php on line 104 (URI: /UrbanEats/public/orders/cart.php, IP: ::1)
+[2026-10-27 17:10:11] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:141) in C:\xampp\htdocs\UrbanEats\includes\auth.php on line 310 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:10:11] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 13 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:10:11] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\includes\functions.php on line 51 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:10:11] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:141) in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 17 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:11:34] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:140) in C:\xampp\htdocs\UrbanEats\includes\auth.php on line 310 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:11:34] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 13 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:11:34] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\includes\functions.php on line 51 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:11:34] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:140) in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 17 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:13:15] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:140) in C:\xampp\htdocs\UrbanEats\includes\auth.php on line 310 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:13:15] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 13 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:13:15] [WARNING] session_start(): Session cannot be started after headers have already been sent in C:\xampp\htdocs\UrbanEats\includes\functions.php on line 51 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)
+[2026-10-27 17:13:15] [WARNING] Cannot modify header information - headers already sent by (output started at C:\xampp\htdocs\UrbanEats\includes\header.php:140) in C:\xampp\htdocs\UrbanEats\public\auth\logout.php on line 17 (URI: /UrbanEats/public/auth/logout.php, IP: ::1)

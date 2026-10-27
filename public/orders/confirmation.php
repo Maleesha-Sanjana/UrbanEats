@@ -9,8 +9,9 @@
 
 $currentPage = 'orders';
 $pageTitle = 'Order Confirmation & Invoice - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_login();
 
 $pdo = get_db_connection();
@@ -56,11 +57,13 @@ $itemsStmt->execute([':oid' => $order['id']]);
 $items = $itemsStmt->fetchAll();
 ?>
 
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
+
 <div class="site-container" style="margin-top: 1.5rem; margin-bottom: 3.5rem;">
     <!-- Action Bar (Not visible when printed) -->
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.75rem;" class="no-print">
         <div>
-            <span style="color: var(--color-success); font-weight: 700; font-size: 0.9rem;">✅ Order Confirmed & Dispatched to Kitchen</span>
+            <span style="color: var(--color-success); font-weight: 700; font-size: 0.9rem;">✅ Order Confirmed & Sent to Kitchen</span>
             <h1 style="font-size: 1.85rem; margin-top: 0.25rem;">Invoice & Receipt: <?= e($order['order_number']) ?></h1>
         </div>
         <div style="display: flex; gap: 0.75rem;">
