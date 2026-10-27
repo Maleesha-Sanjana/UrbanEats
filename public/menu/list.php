@@ -31,8 +31,9 @@ $params = [];
 
 // Search filter
 if (!empty($search)) {
-    $whereClauses[] = "(d.name LIKE :search OR d.description LIKE :search)";
-    $params[':search'] = "%{$search}%";
+    $whereClauses[] = "(d.name LIKE :search_name OR d.description LIKE :search_desc)";
+    $params[':search_name'] = "%{$search}%";
+    $params[':search_desc'] = "%{$search}%";
 }
 
 // Category filter
