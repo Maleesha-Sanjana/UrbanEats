@@ -7,9 +7,10 @@
  * audit history logs, and customer self-service cancellation when in 'Placed' status.
  */
 
-$currentPage = 'orders';
-$pageTitle = 'Live Order Tracking - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 require_login();
 
@@ -103,6 +104,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 }
+
+$currentPage = 'orders';
+$pageTitle = 'Live Order Tracking - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 
 // 3. Fetch Status Workflow History Trail
 $histStmt = $pdo->prepare("
