@@ -21,6 +21,8 @@ DROP TABLE IF EXISTS `payments`;
 DROP TABLE IF EXISTS `order_items`;
 DROP TABLE IF EXISTS `orders`;
 DROP TABLE IF EXISTS `coupons`;
+DROP TABLE IF EXISTS `grn_items`;
+DROP TABLE IF EXISTS `grn_headers`;
 DROP TABLE IF EXISTS `stock_movements`;
 DROP TABLE IF EXISTS `inventory`;
 DROP TABLE IF EXISTS `dishes`;
@@ -177,6 +179,41 @@ CREATE TABLE `stock_movements` (
   KEY `idx_movements_time` (`created_at`),
   CONSTRAINT `fk_movements_dish` FOREIGN KEY (`dish_id`) REFERENCES `dishes` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_movements_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table 9a: grn_headers (Goods Received Note master records - Student 2 Component B)
+CREATE TABLE `grn_headers` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `grn_number` VARCHAR(30) NOT NULL,
+  `supplier_name` VARCHAR(150) NOT NULL,
+  `invoice_reference` VARCHAR(100) NULL,
+  `received_by_user_id` INT UNSIGNED NOT NULL,
+  `notes` TEXT NULL,
+  `total_cost` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `received_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_grn_number` (`grn_number`),
+  KEY `idx_grn_user` (`received_by_user_id`),
+  KEY `idx_grn_received_at` (`received_at`),
+  CONSTRAINT `fk_grn_user` FOREIGN KEY (`received_by_user_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table 9b: grn_items (Line items received under each Goods Received Note)
+CREATE TABLE `grn_items` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `grn_id` INT UNSIGNED NOT NULL,
+  `dish_id` INT UNSIGNED NOT NULL,
+  `quantity_received` INT UNSIGNED NOT NULL,
+  `unit_cost` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `line_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `batch_number` VARCHAR(50) NULL,
+  `expiry_date` DATE NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_grn_items_grn` (`grn_id`),
+  KEY `idx_grn_items_dish` (`dish_id`),
+  CONSTRAINT `fk_grn_items_grn` FOREIGN KEY (`grn_id`) REFERENCES `grn_headers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_grn_items_dish` FOREIGN KEY (`dish_id`) REFERENCES `dishes` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -465,6 +502,24 @@ INSERT INTO `stock_movements` (`dish_id`, `user_id`, `movement_type`, `quantity`
 (22, 5, 'restock', 60, 'Fresh king coconuts received from Kurunegala', '2026-10-27 08:30:00'),
 (6, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00'),
 (21, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00');
+
+-- 9a. Seed Goods Received Notes (GRN Headers - Component B)
+INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_name`, `invoice_reference`, `received_by_user_id`, `notes`, `total_cost`, `received_at`, `created_at`) VALUES
+(1, 'GRN-20261025-1001', 'Ceylon Agro Farms & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 42000.00, '2026-10-25 07:45:00', '2026-10-25 07:45:00'),
+(2, 'GRN-20261026-1002', 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled seafood supply in temperature-controlled boxes.', 47750.00, '2026-10-26 07:30:00', '2026-10-26 07:30:00'),
+(3, 'GRN-20261026-1003', 'Colombo Dairy & Beverages Depot', 'CDCD-7729', 3, 'Fresh curd, rose syrup, and king coconut batch from Kurunegala.', 15600.00, '2026-10-26 08:45:00', '2026-10-26 08:45:00'),
+(4, 'GRN-20261027-1004', 'Kandy Valley Organic Millers', 'KVP-9031', 4, 'Flour, spices, and fresh cutlet ingredients for day shifts.', 32000.00, '2026-10-27 07:15:00', '2026-10-27 07:15:00');
+
+-- 9b. Seed Goods Received Note Items (GRN Details - Component B)
+INSERT INTO `grn_items` (`grn_id`, `dish_id`, `quantity_received`, `unit_cost`, `line_total`, `batch_number`, `expiry_date`) VALUES
+(1, 1, 50, 450.00, 22500.00, 'BATCH-20261025-A1', '2026-10-28'),
+(1, 2, 30, 650.00, 19500.00, 'BATCH-20261025-A2', '2026-10-27'),
+(2, 3, 15, 1600.00, 24000.00, 'BATCH-20261026-B1', '2026-10-29'),
+(2, 14, 25, 950.00, 23750.00, 'BATCH-20261026-B2', '2026-10-29'),
+(3, 21, 45, 200.00, 9000.00, 'BATCH-20261026-C1', '2026-11-02'),
+(3, 22, 60, 110.00, 6600.00, 'BATCH-20261026-C2', '2026-11-05'),
+(4, 6, 70, 380.00, 26600.00, 'BATCH-20261027-D1', '2026-10-30'),
+(4, 13, 90, 60.00, 5400.00, 'BATCH-20261027-D2', '2026-10-29');
 
 -- 10. Seed Coupons (6 Promotional Codes)
 INSERT INTO `coupons` (`id`, `code`, `discount_type`, `discount_value`, `min_order_amount`, `max_discount`, `usage_limit`, `times_used`, `expires_at`, `is_active`) VALUES
