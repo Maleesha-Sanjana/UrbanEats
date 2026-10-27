@@ -21,8 +21,10 @@ DROP TABLE IF EXISTS `payments`;
 DROP TABLE IF EXISTS `order_items`;
 DROP TABLE IF EXISTS `orders`;
 DROP TABLE IF EXISTS `coupons`;
+DROP TABLE IF EXISTS `stock_adjustment_notes`;
 DROP TABLE IF EXISTS `grn_items`;
 DROP TABLE IF EXISTS `grn_headers`;
+DROP TABLE IF EXISTS `suppliers`;
 DROP TABLE IF EXISTS `stock_movements`;
 DROP TABLE IF EXISTS `inventory`;
 DROP TABLE IF EXISTS `dishes`;
@@ -181,10 +183,28 @@ CREATE TABLE `stock_movements` (
   CONSTRAINT `fk_movements_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table 9a: grn_headers (Goods Received Note master records - Student 2 Component B)
+-- Table 9a: suppliers (Supplier Master Records - Student 2 Component B)
+CREATE TABLE `suppliers` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(30) NOT NULL,
+  `name` VARCHAR(150) NOT NULL,
+  `category` ENUM('internal', 'external') NOT NULL DEFAULT 'external',
+  `contact_person` VARCHAR(100) NULL,
+  `phone` VARCHAR(30) NULL,
+  `email` VARCHAR(100) NULL,
+  `address` TEXT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_suppliers_code` (`code`),
+  KEY `idx_suppliers_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table 9b: grn_headers (Goods Received Note master records - Student 2 Component B)
 CREATE TABLE `grn_headers` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `grn_number` VARCHAR(30) NOT NULL,
+  `supplier_id` INT UNSIGNED NOT NULL,
   `supplier_name` VARCHAR(150) NOT NULL,
   `invoice_reference` VARCHAR(100) NULL,
   `received_by_user_id` INT UNSIGNED NOT NULL,
@@ -194,12 +214,14 @@ CREATE TABLE `grn_headers` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_grn_number` (`grn_number`),
+  KEY `idx_grn_supplier` (`supplier_id`),
   KEY `idx_grn_user` (`received_by_user_id`),
   KEY `idx_grn_received_at` (`received_at`),
+  CONSTRAINT `fk_grn_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`id`) ON UPDATE CASCADE,
   CONSTRAINT `fk_grn_user` FOREIGN KEY (`received_by_user_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table 9b: grn_items (Line items received under each Goods Received Note)
+-- Table 9c: grn_items (Line items received under each Goods Received Note)
 CREATE TABLE `grn_items` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `grn_id` INT UNSIGNED NOT NULL,
@@ -214,6 +236,30 @@ CREATE TABLE `grn_items` (
   KEY `idx_grn_items_dish` (`dish_id`),
   CONSTRAINT `fk_grn_items_grn` FOREIGN KEY (`grn_id`) REFERENCES `grn_headers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_grn_items_dish` FOREIGN KEY (`dish_id`) REFERENCES `dishes` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table 9d: stock_adjustment_notes (Formal Stock Adjustment Notes - Student 2 Component B)
+CREATE TABLE `stock_adjustment_notes` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `san_number` VARCHAR(30) NOT NULL,
+  `dish_id` INT UNSIGNED NOT NULL,
+  `adjusted_by_user_id` INT UNSIGNED NOT NULL,
+  `adjustment_type` ENUM('wastage', 'spillage', 'expired', 'count_overage', 'count_shortage', 'internal_sampling') NOT NULL,
+  `direction` ENUM('increase', 'decrease') NOT NULL,
+  `quantity` INT UNSIGNED NOT NULL,
+  `stock_before` INT NOT NULL,
+  `stock_after` INT NOT NULL,
+  `root_cause` VARCHAR(255) NOT NULL,
+  `corrective_action` TEXT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_san_number` (`san_number`),
+  KEY `idx_san_dish` (`dish_id`),
+  KEY `idx_san_user` (`adjusted_by_user_id`),
+  KEY `idx_san_type` (`adjustment_type`),
+  KEY `idx_san_created` (`created_at`),
+  CONSTRAINT `fk_san_dish` FOREIGN KEY (`dish_id`) REFERENCES `dishes` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_san_user` FOREIGN KEY (`adjusted_by_user_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -503,18 +549,30 @@ INSERT INTO `stock_movements` (`dish_id`, `user_id`, `movement_type`, `quantity`
 (6, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00'),
 (21, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00');
 
--- 9a. Seed Goods Received Notes (8 Audited GRN Headers - Component B)
-INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_name`, `invoice_reference`, `received_by_user_id`, `notes`, `total_cost`, `received_at`, `created_at`) VALUES
-(1, 'GRN-20261023-1001', 'Ceylon Agro Poultry & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 64500.00, '2026-10-23 07:45:00', '2026-10-23 07:45:00'),
-(2, 'GRN-20261024-1002', 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled lagoon crab, prawn, and cuttlefish in temperature-controlled coolers.', 71750.00, '2026-10-24 07:30:00', '2026-10-24 07:30:00'),
-(3, 'GRN-20261024-1003', 'Colombo Dairy & Beverages Depot', 'CDCD-7729', 3, 'Fresh curd, rose syrup, and king coconut batch from Kurunegala.', 27600.00, '2026-10-24 08:45:00', '2026-10-24 08:45:00'),
-(4, 'GRN-20261025-1004', 'Kandy Valley Organic Millers', 'KVP-9031', 4, 'Flour, godamba roti, cutlet crumbs, and fresh pol roti mix for shifts.', 38000.00, '2026-10-25 07:15:00', '2026-10-25 07:15:00'),
-(5, 'GRN-20261025-1005', 'Dutch Heritage Specialty Foods', 'DHF-3312', 5, 'Banana leaf wrapped lamprais prep and spiced cashew watalappan trays.', 49000.00, '2026-10-25 08:30:00', '2026-10-25 08:30:00'),
-(6, 'GRN-20261026-1006', 'Lanka Highland Spices & Livestock Depot', 'LHS-7890', 3, 'Tender mutton cut pieces, basmati rice, and poultry bites for devilled dish.', 62500.00, '2026-10-26 07:20:00', '2026-10-26 07:20:00'),
-(7, 'GRN-20261026-1007', 'Southern Coast Cuttlefish & Provisions', 'SCC-5541', 4, 'Cleaned cuttlefish rings, paneer blocks, and kottu seasonings.', 51750.00, '2026-10-26 08:00:00', '2026-10-26 08:00:00'),
-(8, 'GRN-20261027-1008', 'Ceylon Bakeries & Confectionery Ltd', 'CBC-8822', 3, 'Fresh hopper batter, egg pudding base, and jaggery custard.', 28500.00, '2026-10-27 07:00:00', '2026-10-27 07:00:00');
+-- 9a. Seed Suppliers Master (9 Suppliers - Supplier 1 is Central Kitchen Store itself)
+INSERT INTO `suppliers` (`id`, `code`, `name`, `category`, `contact_person`, `phone`, `email`, `address`, `is_active`) VALUES
+(1, 'STORE-INTERNAL', 'Central Kitchen Production (Internal Store / Hub)', 'internal', 'Executive Production Chef', '+94112345670', 'kitchen.production@urbaneats.lk', 'Central Production Facility, 88 Union Place, Colombo 02', 1),
+(2, 'SUP-CAG-01', 'Ceylon Agro Poultry & Spices Ltd', 'external', 'Rohan Jayatissa', '+94112890123', 'orders@ceylonagro.lk', '45 Industrial Estate, Ekala, Ja-Ela', 1),
+(3, 'SUP-JCF-02', 'Jaffna Coastal Fisheries Union', 'external', 'K. Sivalingam', '+94212223456', 'supply@jaffnafish.lk', '12 Harbour Road, Point Pedro, Jaffna', 1),
+(4, 'SUP-CDB-03', 'Colombo Dairy & Beverages Depot', 'external', 'Nalaka Wickramasinghe', '+94114567890', 'sales@colombodairy.lk', '105 Nawala Road, Nugegoda', 1),
+(5, 'SUP-KVO-04', 'Kandy Valley Organic Millers', 'external', 'Gamini Dissanayake', '+94812345678', 'kandyvalley@sltnet.lk', '78 Peradeniya Road, Kandy', 1),
+(6, 'SUP-DHF-05', 'Dutch Heritage Specialty Foods', 'external', 'Antoinette Van Langenberg', '+94112789456', 'info@dutchheritage.lk', '32 De Kretser Place, Colombo 04', 1),
+(7, 'SUP-LHS-06', 'Lanka Highland Spices & Livestock Depot', 'external', 'T. M. Farook', '+94662233445', 'highlandlivestock@gmail.com', '14 Bazaar Street, Matale', 1),
+(8, 'SUP-SCC-07', 'Southern Coast Cuttlefish & Provisions', 'external', 'Pradeep Mendis', '+94912234567', 'sales@southernfish.lk', '90 Fishery Harbour Road, Galle', 1),
+(9, 'SUP-CBC-08', 'Ceylon Bakeries & Confectionery Ltd', 'external', 'Sunil Perera', '+94112456123', 'ceylonbakeries@dialognet.lk', '230 Negombo Road, Peliyagoda', 1);
 
--- 9b. Seed Goods Received Note Items (24 Item Transactions on Dishes 1-22 - Component B)
+-- 9b. Seed Goods Received Notes (8 Audited GRN Headers - Component B)
+INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_id`, `supplier_name`, `invoice_reference`, `received_by_user_id`, `notes`, `total_cost`, `received_at`, `created_at`) VALUES
+(1, 'GRN-20261023-1001', 2, 'Ceylon Agro Poultry & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 64500.00, '2026-10-23 07:45:00', '2026-10-23 07:45:00'),
+(2, 'GRN-20261024-1002', 3, 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled lagoon crab, prawn, and cuttlefish in temperature-controlled coolers.', 71750.00, '2026-10-24 07:30:00', '2026-10-24 07:30:00'),
+(3, 'GRN-20261024-1003', 4, 'Colombo Dairy & Beverages Depot', 'CDCD-7729', 3, 'Fresh curd, rose syrup, and king coconut batch from Kurunegala.', 27600.00, '2026-10-24 08:45:00', '2026-10-24 08:45:00'),
+(4, 'GRN-20261025-1004', 5, 'Kandy Valley Organic Millers', 'KVP-9031', 4, 'Flour, godamba roti, cutlet crumbs, and fresh pol roti mix for shifts.', 38000.00, '2026-10-25 07:15:00', '2026-10-25 07:15:00'),
+(5, 'GRN-20261025-1005', 1, 'Central Kitchen Production (Internal Store / Hub)', 'PROD-BATCH-401', 5, 'Goods received from internal production. Banana leaf wrapped lamprais prep and spiced cashew watalappan trays.', 49000.00, '2026-10-25 08:30:00', '2026-10-25 08:30:00'),
+(6, 'GRN-20261026-1006', 7, 'Lanka Highland Spices & Livestock Depot', 'LHS-7890', 3, 'Tender mutton cut pieces, basmati rice, and poultry bites for devilled dish.', 62500.00, '2026-10-26 07:20:00', '2026-10-26 07:20:00'),
+(7, 'GRN-20261026-1007', 8, 'Southern Coast Cuttlefish & Provisions', 'SCC-5541', 4, 'Cleaned cuttlefish rings, paneer blocks, and kottu seasonings.', 51750.00, '2026-10-26 08:00:00', '2026-10-26 08:00:00'),
+(8, 'GRN-20261027-1008', 9, 'Ceylon Bakeries & Confectionery Ltd', 'CBC-8822', 3, 'Fresh hopper batter, egg pudding base, and jaggery custard.', 28500.00, '2026-10-27 07:00:00', '2026-10-27 07:00:00');
+
+-- 9c. Seed Goods Received Note Items (24 Item Transactions on Dishes 1-22 - Component B)
 INSERT INTO `grn_items` (`grn_id`, `dish_id`, `quantity_received`, `unit_cost`, `line_total`, `batch_number`, `expiry_date`) VALUES
 (1, 1, 50, 450.00, 22500.00, 'BATCH-20261023-A1', '2026-10-27'),
 (1, 4, 30, 800.00, 24000.00, 'BATCH-20261023-A2', '2026-10-28'),
@@ -540,6 +598,13 @@ INSERT INTO `grn_items` (`grn_id`, `dish_id`, `quantity_received`, `unit_cost`, 
 (8, 16, 40, 300.00, 12000.00, 'BATCH-20261027-H1', '2026-10-29'),
 (8, 19, 35, 300.00, 10500.00, 'BATCH-20261027-H2', '2026-11-03'),
 (8, 18, 30, 200.00, 6000.00, 'BATCH-20261027-H3', '2026-11-06');
+
+-- 9d. Seed Stock Adjustment Notes (4 Audited SAN Records - Component B)
+INSERT INTO `stock_adjustment_notes` (`id`, `san_number`, `dish_id`, `adjusted_by_user_id`, `adjustment_type`, `direction`, `quantity`, `stock_before`, `stock_after`, `root_cause`, `corrective_action`, `created_at`) VALUES
+(1, 'SAN-20261025-1001', 16, 5, 'wastage', 'decrease', 2, 42, 40, 'Dropped egg hopper pan tray during morning rush hour.', 'Retrained junior cook on tray transport protocol.', '2026-10-25 09:30:00'),
+(2, 'SAN-20261026-1002', 6, 4, 'count_overage', 'increase', 3, 67, 70, 'Physical inventory reconciliation found 3 extra pre-packed kottu portions in chiller 2.', 'Adjusted ledger balance to match verified count.', '2026-10-26 16:00:00'),
+(3, 'SAN-20261026-1003', 14, 3, 'expired', 'decrease', 2, 27, 25, 'Pre-cut seasoned cuttlefish batch exceeded 48h shelf life.', 'Disposed safely according to food safety hygiene standards.', '2026-10-26 17:15:00'),
+(4, 'SAN-20261027-1004', 10, 3, 'internal_sampling', 'decrease', 1, 51, 50, 'Head Chef daily QA sensory evaluation and spice check for biryani dum pot.', 'Approved batch quality for dispatch.', '2026-10-27 10:45:00');
 
 -- 10. Seed Coupons (6 Promotional Codes)
 INSERT INTO `coupons` (`id`, `code`, `discount_type`, `discount_value`, `min_order_amount`, `max_discount`, `usage_limit`, `times_used`, `expires_at`, `is_active`) VALUES

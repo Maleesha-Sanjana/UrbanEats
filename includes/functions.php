@@ -207,8 +207,9 @@ function generate_grn_number(PDO $pdo): string {
  * Student 2: Denuka (Component B Owner)
  *
  * Executes inside an atomic transaction:
- * - Validates supplier details and received items
- * - Inserts header record into grn_headers
+ * - Validates supplier details (linked to suppliers table)
+ * - Identifies Internal Kitchen Store (Supplier #1) for Production Receipts
+ * - Inserts header record into grn_headers with supplier_id FK
  * - Inserts line records into grn_items
  * - Increments inventory stock in inventory table
  * - Records audited movements in stock_movements (type='restock')
@@ -218,16 +219,50 @@ function generate_grn_number(PDO $pdo): string {
 function process_grn_receipt(
     PDO $pdo,
     int $userId,
-    string $supplierName,
+    string|int $supplier,
     ?string $invoiceReference,
     ?string $notes,
     array $items
 ): array {
-    if (empty(trim($supplierName))) {
-        throw new InvalidArgumentException("Supplier name is required to process a Goods Received Note.");
-    }
     if (empty($items)) {
         throw new InvalidArgumentException("At least one valid dish item must be included in the GRN.");
+    }
+
+    // Resolve supplier ID, name, and internal vs external classification
+    $supplierId = 1;
+    $supplierName = '';
+    $isInternalProduction = false;
+
+    if (is_numeric($supplier)) {
+        $supplierId = (int)$supplier;
+        $sStmt = $pdo->prepare("SELECT id, name, category FROM suppliers WHERE id = :id LIMIT 1");
+        $sStmt->execute([':id' => $supplierId]);
+        $sRow = $sStmt->fetch();
+        if ($sRow) {
+            $supplierName = $sRow['name'];
+            $isInternalProduction = ((int)$sRow['id'] === 1 || $sRow['category'] === 'internal');
+        } else {
+            $supplierId = 1;
+            $supplierName = 'Central Kitchen Production (Internal Store / Hub)';
+            $isInternalProduction = true;
+        }
+    } else {
+        $supplierName = trim((string)$supplier);
+        if ($supplierName === '') {
+            throw new InvalidArgumentException("Supplier name or ID is required to process a Goods Received Note.");
+        }
+        $sStmt = $pdo->prepare("SELECT id, name, category FROM suppliers WHERE name = :name LIMIT 1");
+        $sStmt->execute([':name' => $supplierName]);
+        $sRow = $sStmt->fetch();
+        if ($sRow) {
+            $supplierId = (int)$sRow['id'];
+            $isInternalProduction = ((int)$sRow['id'] === 1 || $sRow['category'] === 'internal');
+        } else {
+            $code = 'SUP-' . strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $supplierName) ?: 'GEN', 0, 3)) . '-' . random_int(10, 99);
+            $insSup = $pdo->prepare("INSERT INTO suppliers (code, name, category, is_active, created_at) VALUES (:code, :name, 'external', 1, NOW())");
+            $insSup->execute([':code' => $code, ':name' => $supplierName]);
+            $supplierId = (int)$pdo->lastInsertId();
+        }
     }
 
     $grnNumber = generate_grn_number($pdo);
@@ -265,18 +300,19 @@ function process_grn_receipt(
 
     $pdo->beginTransaction();
     try {
-        // 1. Insert Master GRN Header
+        // 1. Insert Master GRN Header with foreign key supplier_id
         $headerStmt = $pdo->prepare("
-            INSERT INTO grn_headers (grn_number, supplier_name, invoice_reference, received_by_user_id, notes, total_cost, received_at, created_at)
-            VALUES (:grn_num, :supplier, :invoice_ref, :user_id, :notes, :total_cost, NOW(), NOW())
+            INSERT INTO grn_headers (grn_number, supplier_id, supplier_name, invoice_reference, received_by_user_id, notes, total_cost, received_at, created_at)
+            VALUES (:grn_num, :supplier_id, :supplier_name, :invoice_ref, :user_id, :notes, :total_cost, NOW(), NOW())
         ");
         $headerStmt->execute([
-            ':grn_num'     => $grnNumber,
-            ':supplier'    => trim($supplierName),
-            ':invoice_ref' => !empty($invoiceReference) ? trim($invoiceReference) : null,
-            ':user_id'     => $userId,
-            ':notes'       => !empty($notes) ? trim($notes) : null,
-            ':total_cost'  => $totalCost
+            ':grn_num'       => $grnNumber,
+            ':supplier_id'   => $supplierId,
+            ':supplier_name' => $supplierName,
+            ':invoice_ref'   => !empty($invoiceReference) ? trim($invoiceReference) : null,
+            ':user_id'       => $userId,
+            ':notes'         => !empty($notes) ? trim($notes) : null,
+            ':total_cost'    => $totalCost
         ]);
         $grnId = (int)$pdo->lastInsertId();
 
@@ -324,11 +360,25 @@ function process_grn_receipt(
                 ]);
             }
 
-            // Record in stock_movements for audit history and reports
-            $movementReason = "Received via {$grnNumber} (Supplier: {$supplierName})";
-            if (!empty($vItem['batch_number'])) {
-                $movementReason .= " [Batch: {$vItem['batch_number']}]";
+            // Distinguish internal production receipt from external vendor receipt in audit trail
+            if ($isInternalProduction) {
+                $movementReason = "Goods Received from Production via {$grnNumber}";
+                if (!empty($invoiceReference)) {
+                    $movementReason .= " [Batch/Job: {$invoiceReference}]";
+                }
+                if (!empty($vItem['batch_number'])) {
+                    $movementReason .= " (Lot: {$vItem['batch_number']})";
+                }
+            } else {
+                $movementReason = "Received via {$grnNumber} (Supplier: {$supplierName})";
+                if (!empty($invoiceReference)) {
+                    $movementReason .= " [Invoice: {$invoiceReference}]";
+                }
+                if (!empty($vItem['batch_number'])) {
+                    $movementReason .= " [Batch: {$vItem['batch_number']}]";
+                }
             }
+
             record_stock_movement(
                 $pdo,
                 $vItem['dish_id'],
@@ -340,21 +390,197 @@ function process_grn_receipt(
         }
 
         // 3. Central Audit Log
+        $receiptTypeLabel = $isInternalProduction ? 'Internal Production Receipt' : 'External Supplier Delivery';
         log_action(
             $pdo,
             'GRN_CREATED',
-            "Generated Goods Received Note {$grnNumber} from {$supplierName} (" . count($validatedItems) . " items, Total: LKR " . number_format($totalCost, 2) . ")",
+            "Generated {$receiptTypeLabel} {$grnNumber} from {$supplierName} (" . count($validatedItems) . " items, Total: LKR " . number_format($totalCost, 2) . ")",
             $userId
         );
 
         $pdo->commit();
 
         return [
-            'success'     => true,
-            'grn_id'      => $grnId,
-            'grn_number'  => $grnNumber,
-            'total_cost'  => $totalCost,
-            'items_count' => count($validatedItems)
+            'success'       => true,
+            'grn_id'        => $grnId,
+            'grn_number'    => $grnNumber,
+            'supplier_id'   => $supplierId,
+            'supplier_name' => $supplierName,
+            'is_internal'   => $isInternalProduction,
+            'total_cost'    => $totalCost,
+            'items_count'   => count($validatedItems)
+        ];
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * Generate Next Sequential Stock Adjustment Note Number (e.g. SAN-20261027-1005)
+ * Student 2: Denuka (Component B Owner)
+ */
+function generate_san_number(PDO $pdo): string {
+    $todayPrefix = 'SAN-' . date('Ymd') . '-';
+    $stmt = $pdo->prepare("SELECT san_number FROM stock_adjustment_notes WHERE san_number LIKE :prefix ORDER BY id DESC LIMIT 1");
+    $stmt->execute([':prefix' => $todayPrefix . '%']);
+    $lastNum = $stmt->fetchColumn();
+
+    if ($lastNum) {
+        $parts = explode('-', $lastNum);
+        $lastSeq = (int)end($parts);
+        $nextSeq = $lastSeq + 1;
+    } else {
+        $nextSeq = 1001;
+    }
+    return $todayPrefix . $nextSeq;
+}
+
+/**
+ * Process and record an official Stock Adjustment Note (SAN)
+ * Student 2: Denuka (Component B Owner)
+ *
+ * Professional Inventory Adjustment Workflow:
+ * - Full ACID transaction with row-level lock (SELECT ... FOR UPDATE)
+ * - Directional integrity: 'decrease' (wastage/expired/damage) vs 'increase' (count overage)
+ * - Refuses to allow inventory to drop below zero
+ * - Writes to stock_adjustment_notes with full audit snapshots (stock_before, stock_after, root_cause, corrective_action)
+ * - Updates inventory.current_stock
+ * - Records audited stock movement in stock_movements
+ * - Logs to centralized audit_log
+ *
+ * @throws InvalidArgumentException
+ * @throws Exception
+ */
+function process_stock_adjustment_note(
+    PDO $pdo,
+    int $userId,
+    int $dishId,
+    string $type,
+    string $direction,
+    int $quantity,
+    string $rootCause,
+    ?string $correctiveAction = null
+): array {
+    if ($dishId <= 0) {
+        throw new InvalidArgumentException("A valid dish must be selected for stock adjustment.");
+    }
+    if ($quantity <= 0) {
+        throw new InvalidArgumentException("Adjustment quantity must be greater than zero.");
+    }
+    if (empty(trim($rootCause))) {
+        throw new InvalidArgumentException("A documented root cause is required for a formal Stock Adjustment Note.");
+    }
+
+    $validTypes = ['wastage', 'spillage', 'expired', 'count_overage', 'count_shortage', 'internal_sampling'];
+    if (!in_array($type, $validTypes, true)) {
+        throw new InvalidArgumentException("Invalid adjustment type: '{$type}'.");
+    }
+
+    if (!in_array($direction, ['increase', 'decrease'], true)) {
+        throw new InvalidArgumentException("Adjustment direction must be either 'increase' or 'decrease'.");
+    }
+
+    $sanNumber = generate_san_number($pdo);
+
+    $pdo->beginTransaction();
+    try {
+        // 1. Row-level lock to prevent concurrent stock calculation race conditions
+        $lockStmt = $pdo->prepare("
+            SELECT i.current_stock, d.name AS dish_name 
+            FROM inventory i
+            JOIN dishes d ON i.dish_id = d.id
+            WHERE i.dish_id = :dish_id 
+            FOR UPDATE
+        ");
+        $lockStmt->execute([':dish_id' => $dishId]);
+        $row = $lockStmt->fetch();
+
+        if (!$row) {
+            throw new Exception("Dish #{$dishId} has no inventory record.");
+        }
+
+        $stockBefore = (int)$row['current_stock'];
+        $dishName = $row['dish_name'];
+
+        if ($direction === 'decrease') {
+            if ($stockBefore < $quantity) {
+                throw new Exception("Stock reduction of {$quantity} units exceeds current available inventory ({$stockBefore} units in stock for '{$dishName}'). Stock cannot go below zero.");
+            }
+            $stockAfter = $stockBefore - $quantity;
+            $stockDelta = -$quantity;
+            $movementType = 'wastage';
+        } else {
+            $stockAfter = $stockBefore + $quantity;
+            $stockDelta = $quantity;
+            $movementType = 'adjustment';
+        }
+
+        // 2. Update master inventory
+        $updInv = $pdo->prepare("
+            UPDATE inventory 
+            SET current_stock = :new_stock, updated_at = NOW() 
+            WHERE dish_id = :dish_id
+        ");
+        $updInv->execute([
+            ':new_stock' => $stockAfter,
+            ':dish_id'   => $dishId
+        ]);
+
+        // 3. Insert official Stock Adjustment Note voucher record
+        $sanStmt = $pdo->prepare("
+            INSERT INTO stock_adjustment_notes 
+            (san_number, dish_id, adjusted_by_user_id, adjustment_type, direction, quantity, stock_before, stock_after, root_cause, corrective_action, created_at)
+            VALUES 
+            (:san_num, :dish_id, :user_id, :type, :direction, :qty, :before, :after, :cause, :action, NOW())
+        ");
+        $sanStmt->execute([
+            ':san_num'   => $sanNumber,
+            ':dish_id'   => $dishId,
+            ':user_id'   => $userId,
+            ':type'      => $type,
+            ':direction' => $direction,
+            ':qty'       => $quantity,
+            ':before'    => $stockBefore,
+            ':after'     => $stockAfter,
+            ':cause'     => trim($rootCause),
+            ':action'    => !empty($correctiveAction) ? trim($correctiveAction) : null
+        ]);
+        $sanId = (int)$pdo->lastInsertId();
+
+        // 4. Record in stock_movements for audit history
+        $movementReason = "Adjusted via {$sanNumber} [{$type} / {$direction}]: " . trim($rootCause);
+        record_stock_movement(
+            $pdo,
+            $dishId,
+            $userId,
+            $movementType,
+            $stockDelta,
+            $movementReason
+        );
+
+        // 5. Central Audit Log
+        $dirLabel = ($direction === 'increase') ? 'INCREASE (Overage)' : 'DECREASE (Wastage)';
+        log_action(
+            $pdo,
+            'STOCK_ADJUSTMENT_NOTE',
+            "Generated {$sanNumber} for '{$dishName}' ({$dirLabel}: {$quantity} units. Stock: {$stockBefore} -> {$stockAfter}). Cause: " . trim($rootCause),
+            $userId
+        );
+
+        $pdo->commit();
+
+        return [
+            'success'         => true,
+            'san_id'          => $sanId,
+            'san_number'      => $sanNumber,
+            'dish_id'         => $dishId,
+            'dish_name'       => $dishName,
+            'direction'       => $direction,
+            'adjustment_type' => $type,
+            'quantity'        => $quantity,
+            'stock_before'    => $stockBefore,
+            'stock_after'     => $stockAfter
         ];
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -427,7 +653,11 @@ function upload_dish_image(array $file): array {
     $uniqueName = 'dish_' . bin2hex(random_bytes(16)) . '.' . $targetExt;
     $targetPath = $uploadDir . $uniqueName;
 
-    if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+    $saved = is_uploaded_file($file['tmp_name'])
+        ? move_uploaded_file($file['tmp_name'], $targetPath)
+        : copy($file['tmp_name'], $targetPath);
+
+    if (!$saved) {
         return ['success' => false, 'error' => 'Failed to save uploaded image. Check directory permissions.'];
     }
 

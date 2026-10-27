@@ -44,16 +44,16 @@ echo "1. Reading master schema & seed SQL file: urbaneats_db.sql...\n";
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
 
 $tablesToDrop = [
-    'grn_items', 'grn_headers', 'order_status_history', 'payments', 
+    'grn_items', 'grn_headers', 'stock_adjustment_notes', 'order_status_history', 'payments', 
     'order_items', 'orders', 'coupons', 'stock_movements', 'inventory', 
-    'dishes', 'categories', 'password_resets', 'audit_log', 
+    'dishes', 'categories', 'suppliers', 'password_resets', 'audit_log', 
     'login_attempts', 'users', 'roles'
 ];
 
 foreach ($tablesToDrop as $table) {
     $pdo->exec("DROP TABLE IF EXISTS `$table`");
 }
-echo "2. Dropped all 16 existing tables to eliminate old schema conflicts.\n";
+echo "2. Dropped all 18 existing tables to eliminate old schema conflicts.\n";
 
 // Robust line-by-line SQL parser for MySQL multi-line statements
 echo "3. Parsing and executing SQL table creation and seed statements...\n";

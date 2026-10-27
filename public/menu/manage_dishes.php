@@ -241,9 +241,11 @@ $allDishes = $pdo->query($catalogueQuery)->fetchAll();
                 Component B: Inventory & Catalogue
             </span>
             <h1 style="font-size: 2rem; margin-top: 0.25rem;">Manage Dish Catalogue</h1>
-        </div>
-        <div style="display: flex; gap: 0.75rem;">
-            <a href="<?= $appBase ?>/menu/stock.php" class="btn btn-secondary">📦 Stock & Wastage Dashboard</a>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-primary" style="background: #16a34a; border-color: #16a34a;">📥 GRN Inwards</a>
+            <a href="<?= $appBase ?>/menu/adjustment_notes.php" class="btn btn-secondary">📝 Stock Adjustment Notes</a>
+            <a href="<?= $appBase ?>/menu/suppliers.php" class="btn btn-outline">🚚 Supplier Master</a>
+            <a href="<?= $appBase ?>/menu/stock.php" class="btn btn-outline">📦 Stock Dashboard</a>
             <a href="<?= $appBase ?>/menu/categories.php" class="btn btn-outline">📂 Categories</a>
         </div>
     </div>
