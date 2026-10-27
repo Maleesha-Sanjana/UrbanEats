@@ -667,4 +667,55 @@ INSERT INTO `order_status_history` (`order_id`, `changed_by_user_id`, `old_statu
 (21, 11, NULL, 'Placed', 'Order submitted', '2026-10-27 13:30:00'),
 (21, 1, 'Placed', 'Cancelled', 'Customer phoned to cancel; card payment refunded', '2026-10-27 13:35:00');
 
+-- Backfill missing transitions so every seeded order has a complete timeline.
+INSERT INTO `order_status_history`
+  (`order_id`, `changed_by_user_id`, `old_status`, `new_status`, `comment`, `created_at`)
+SELECT o.id,
+       CASE WHEN s.step_no = 1 THEN o.user_id ELSE 3 END,
+       s.old_status,
+       s.new_status,
+       CASE
+         WHEN s.new_status = 'Placed' THEN 'Order placed by customer'
+         WHEN s.new_status = 'Cancelled' THEN 'Order cancelled before completion'
+         ELSE CONCAT('Order advanced to ', s.new_status)
+       END,
+       DATE_ADD(o.created_at, INTERVAL ((s.step_no - 1) * 5) MINUTE)
+FROM `orders` o
+JOIN (
+  SELECT 'delivery' AS order_type, 1 AS step_no, NULL AS old_status, 'Placed' AS new_status
+  UNION ALL SELECT 'delivery', 2, 'Placed', 'Preparing'
+  UNION ALL SELECT 'delivery', 3, 'Preparing', 'Ready'
+  UNION ALL SELECT 'delivery', 4, 'Ready', 'Out for Delivery'
+  UNION ALL SELECT 'delivery', 5, 'Out for Delivery', 'Completed'
+  UNION ALL SELECT 'delivery', 2, 'Placed', 'Cancelled'
+  UNION ALL SELECT 'pickup', 1, NULL, 'Placed'
+  UNION ALL SELECT 'pickup', 2, 'Placed', 'Preparing'
+  UNION ALL SELECT 'pickup', 3, 'Preparing', 'Ready'
+  UNION ALL SELECT 'pickup', 4, 'Ready', 'Collected'
+  UNION ALL SELECT 'pickup', 5, 'Collected', 'Completed'
+  UNION ALL SELECT 'pickup', 2, 'Placed', 'Cancelled'
+) AS s ON s.order_type = o.order_type
+WHERE (
+    (o.status = 'Cancelled' AND s.new_status IN ('Placed', 'Cancelled'))
+    OR (
+      o.status <> 'Cancelled'
+      AND s.new_status <> 'Cancelled'
+      AND s.step_no <= CASE o.status
+        WHEN 'Placed' THEN 1
+        WHEN 'Preparing' THEN 2
+        WHEN 'Ready' THEN 3
+        WHEN 'Out for Delivery' THEN 4
+        WHEN 'Collected' THEN 4
+        WHEN 'Completed' THEN 5
+        ELSE 0
+      END
+    )
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM `order_status_history` existing
+    WHERE existing.order_id = o.id
+      AND existing.new_status = s.new_status
+  );
+
 -- End of schema and seed script

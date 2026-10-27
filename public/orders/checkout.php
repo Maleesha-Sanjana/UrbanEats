@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../includes/errors.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
+$appBase = get_app_base_url();
 require_login();
 
 $pdo = get_db_connection();
@@ -51,39 +52,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     validate_csrf_or_fail();
 
     // Basic Validation
-    if ($orderType === 'delivery' && empty(trim($deliveryAddress))) {
+    if (!in_array($orderType, ['delivery', 'pickup'], true)) {
+        $checkoutError = 'Please choose a valid delivery or pickup option.';
+    } elseif ($orderType === 'delivery' && empty(trim($deliveryAddress))) {
         $checkoutError = 'Delivery address is required for delivery orders.';
     } elseif (empty(trim($contactPhone))) {
         $checkoutError = 'Contact phone number is required.';
+    } elseif (strlen($contactPhone) > 20) {
+        $checkoutError = 'Contact phone number must be 20 characters or fewer.';
+    } elseif (strlen($deliveryAddress) > 2000 || strlen($notes) > 2000) {
+        $checkoutError = 'Address and preparation instructions must be 2,000 characters or fewer.';
     } elseif (!in_array($paymentMethod, ['cash_on_delivery', 'card', 'bank_transfer'], true)) {
         $checkoutError = 'Please choose a valid payment method.';
     } else {
-        // Evaluate coupon
-        $couponId = null;
-        $discountAmount = 0.0;
-        if (!empty($couponCode)) {
-            $couponCheck = validate_coupon($pdo, $couponCode, $subtotal);
-            if ($couponCheck['valid']) {
-                $couponId = (int)$couponCheck['coupon']['id'];
-                $discountAmount = (float)$couponCheck['discount_amount'];
-            } else {
-                $checkoutError = 'Voucher Error: ' . $couponCheck['error'];
+        $requestedQuantities = [];
+        foreach ($_SESSION['cart'] as $dishId => $requestedQty) {
+            $dishId = (int)$dishId;
+            $requestedQty = (int)$requestedQty;
+            if ($dishId > 0 && $requestedQty > 0) {
+                $requestedQuantities[$dishId] = $requestedQty;
             }
         }
 
-        if (empty($checkoutError)) {
-            $deliveryFee = ($orderType === 'delivery') ? 300.00 : 0.00;
-            $grandTotal = max(0.00, ($subtotal - $discountAmount) + $deliveryFee);
-
-            // Generate unique human-readable order number
-            $orderNumber = sprintf('UE-%s-%04d', date('Ymd'), random_int(1000, 9999));
-
-            // ================================================================
-            // ATOMIC DATABASE TRANSACTION
-            // ================================================================
+        if (empty($requestedQuantities)) {
+            $checkoutError = 'Your shopping cart is empty. Please select dishes before checkout.';
+        } else {
+            ksort($requestedQuantities, SORT_NUMERIC);
             $pdo->beginTransaction();
             try {
-                // 1. Insert Order
+                $dishIds = array_keys($requestedQuantities);
+                sort($dishIds, SORT_NUMERIC);
+                $placeholders = implode(',', array_fill(0, count($dishIds), '?'));
+                $dishStmt = $pdo->prepare("
+                    SELECT d.id, d.name, d.price, d.is_active,
+                           COALESCE(i.current_stock, 0) AS current_stock
+                    FROM dishes d
+                    JOIN inventory i ON i.dish_id = d.id
+                    WHERE d.id IN ($placeholders)
+                    ORDER BY d.id
+                    FOR UPDATE
+                ");
+                $dishStmt->execute($dishIds);
+                $lockedDishes = $dishStmt->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
+
+                $verifiedItems = [];
+                $subtotal = 0.0;
+                foreach ($requestedQuantities as $dishId => $qty) {
+                    if (!isset($lockedDishes[$dishId]) || (int)$lockedDishes[$dishId]['is_active'] !== 1) {
+                        throw new Exception("A selected dish is no longer available. Please review your cart.");
+                    }
+
+                    $dish = $lockedDishes[$dishId];
+                    if ((int)$dish['current_stock'] < $qty) {
+                        throw new Exception("Insufficient stock for '{$dish['name']}'. Please review your cart.");
+                    }
+
+                    $unitPrice = (float)$dish['price'];
+                    $lineTotal = round($unitPrice * $qty, 2);
+                    $subtotal += $lineTotal;
+                    $verifiedItems[] = [
+                        'dish_id' => $dishId,
+                        'dish_name' => $dish['name'],
+                        'unit_price' => $unitPrice,
+                        'quantity' => $qty,
+                        'subtotal' => $lineTotal
+                    ];
+                }
+                $subtotal = round($subtotal, 2);
+
+                $couponId = null;
+                $discountAmount = 0.0;
+                if ($couponCode !== '') {
+                    $couponCheck = validate_coupon($pdo, $couponCode, $subtotal, true);
+                    if (!$couponCheck['valid']) {
+                        throw new Exception('Voucher Error: ' . $couponCheck['error']);
+                    }
+                    $couponId = (int)$couponCheck['coupon']['id'];
+                    $discountAmount = (float)$couponCheck['discount_amount'];
+                }
+
+                $deliveryFee = ($orderType === 'delivery') ? 300.00 : 0.00;
+                $grandTotal = round(max(0.00, ($subtotal - $discountAmount) + $deliveryFee), 2);
+                $orderNumber = sprintf('UE-%s-%s', date('Ymd'), strtoupper(bin2hex(random_bytes(4))));
+
+                // 1. Insert order using totals calculated from the locked database rows.
                 $orderStmt = $pdo->prepare("
                     INSERT INTO orders (
                         order_number, user_id, order_type, delivery_address, contact_phone, notes,
@@ -94,62 +146,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     )
                 ");
                 $orderStmt->execute([
-                    ':order_num'   => $orderNumber,
-                    ':user_id'     => $userId,
-                    ':order_type'  => $orderType,
-                    ':address'     => ($orderType === 'delivery') ? $deliveryAddress : null,
-                    ':phone'       => $contactPhone,
-                    ':notes'       => $notes ?: null,
-                    ':subtotal'    => $subtotal,
-                    ':discount'    => $discountAmount,
-                    ':coupon_id'   => $couponId,
-                    ':fee'         => $deliveryFee,
-                    ':total'       => $grandTotal
+                    ':order_num' => $orderNumber,
+                    ':user_id' => $userId,
+                    ':order_type' => $orderType,
+                    ':address' => ($orderType === 'delivery') ? trim($deliveryAddress) : null,
+                    ':phone' => trim($contactPhone),
+                    ':notes' => $notes !== '' ? $notes : null,
+                    ':subtotal' => $subtotal,
+                    ':discount' => $discountAmount,
+                    ':coupon_id' => $couponId,
+                    ':fee' => $deliveryFee,
+                    ':total' => $grandTotal
                 ]);
                 $orderId = (int)$pdo->lastInsertId();
 
-                // 2. Insert Order Items (with snapshot unit_price) & Deduct Stock
+                // 2. Insert price snapshots and deduct stock in the same transaction.
                 $itemStmt = $pdo->prepare("
                     INSERT INTO order_items (order_id, dish_id, dish_name, unit_price, quantity, subtotal)
                     VALUES (:order_id, :dish_id, :dish_name, :unit_price, :qty, :line_subtotal)
                 ");
 
-                foreach ($cartItems as $item) {
-                    $dishId = (int)$item['dish_id'];
-                    $qty = (int)$item['quantity'];
-
-                    // Lock and re-read dish unit price directly from DB
-                    $dishCheckStmt = $pdo->prepare("SELECT name, price FROM dishes WHERE id = :id AND is_active = 1 FOR UPDATE");
-                    $dishCheckStmt->execute([':id' => $dishId]);
-                    $verifiedDish = $dishCheckStmt->fetch();
-
-                    if (!$verifiedDish) {
-                        throw new Exception("Dish '{$item['name']}' is no longer available in our catalogue.");
-                    }
-
-                    $verifiedUnitPrice = (float)$verifiedDish['price'];
-                    $verifiedLineTotal = $verifiedUnitPrice * $qty;
-
-                    // Insert snapshot item record
+                foreach ($verifiedItems as $item) {
                     $itemStmt->execute([
-                        ':order_id'       => $orderId,
-                        ':dish_id'        => $dishId,
-                        ':dish_name'      => $verifiedDish['name'],
-                        ':unit_price'     => $verifiedUnitPrice,
-                        ':qty'            => $qty,
-                        ':line_subtotal'  => $verifiedLineTotal
+                        ':order_id' => $orderId,
+                        ':dish_id' => $item['dish_id'],
+                        ':dish_name' => $item['dish_name'],
+                        ':unit_price' => $item['unit_price'],
+                        ':qty' => $item['quantity'],
+                        ':line_subtotal' => $item['subtotal']
                     ]);
 
-                    // Call transaction-safe reduce_stock function (Component B contract)
-                    reduce_stock($pdo, $dishId, $qty);
-
-                    // Record stock audit movement
+                    reduce_stock($pdo, $item['dish_id'], $item['quantity']);
                     record_stock_movement(
                         $pdo,
-                        $dishId,
+                        $item['dish_id'],
                         $userId,
                         'sale',
-                        -$qty,
+                        -$item['quantity'],
                         "Deducted for Order #{$orderNumber}"
                     );
                 }
@@ -186,10 +219,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     ':user_id'  => $userId
                 ]);
 
-                // 5. Update Coupon Usage if applicable
+                // 5. Update coupon usage while its row remains locked.
                 if ($couponId !== null) {
-                    $updCoupon = $pdo->prepare("UPDATE coupons SET times_used = times_used + 1 WHERE id = :cid");
+                    $updCoupon = $pdo->prepare("
+                        UPDATE coupons
+                        SET times_used = times_used + 1
+                        WHERE id = :cid
+                          AND is_active = 1
+                          AND expires_at >= NOW()
+                          AND (usage_limit IS NULL OR times_used < usage_limit)
+                    ");
                     $updCoupon->execute([':cid' => $couponId]);
+                    if ($updCoupon->rowCount() !== 1) {
+                        throw new Exception('This coupon is no longer available. Please remove it and try again.');
+                    }
                 }
 
                 // 6. Central Audit Trail (Component A contract)
@@ -206,8 +249,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 header("Location: {$appBase}/orders/confirmation.php?order_number=" . urlencode($orderNumber));
                 exit;
 
-            } catch (Exception $e) {
-                $pdo->rollBack();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 $checkoutError = 'Checkout Failed: ' . $e->getMessage();
             }
         }
@@ -230,6 +275,8 @@ $currentPage = 'checkout';
 $pageTitle = 'Secure Checkout - UrbanEats Cloud Kitchen';
 require_once __DIR__ . '/../../includes/header.php';
 ?>
+
+<?php require_once __DIR__ . '/../../includes/header.php'; ?>
 
 <div class="site-container" style="margin-top: 1rem; margin-bottom: 3.5rem;">
     <!-- Page Header -->

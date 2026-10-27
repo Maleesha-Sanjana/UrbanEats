@@ -28,6 +28,15 @@ function e(?string $value): string {
 }
 
 /**
+ * Determine the public application URL from the current PHP script path.
+ */
+function get_app_base_url(): string {
+    $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+    $publicPos = strpos($scriptPath, '/public');
+    return ($publicPos !== false) ? substr($scriptPath, 0, $publicPos + 7) : '/UrbanEats/public';
+}
+
+/**
  * Format currency in Sri Lankan Rupees (LKR)
  */
 function format_price(float|int|string $amount): string {
@@ -525,8 +534,9 @@ function get_cart_details(PDO $pdo): array {
  * - Collected -> Completed
  * - Completed -> (Terminal)
  * - Cancelled -> (Terminal)
+ * When provided, $orderType restricts delivery-only and pickup-only transitions.
  */
-function is_valid_status_transition(string $currentStatus, string $newStatus): bool {
+function is_valid_status_transition(string $currentStatus, string $newStatus, ?string $orderType = null): bool {
     $transitions = [
         'Placed' => ['Preparing', 'Cancelled'],
         'Preparing' => ['Ready', 'Cancelled'],
@@ -541,22 +551,35 @@ function is_valid_status_transition(string $currentStatus, string $newStatus): b
         return false;
     }
 
-    return in_array($newStatus, $transitions[$currentStatus], true);
+    if (!in_array($newStatus, $transitions[$currentStatus], true)) {
+        return false;
+    }
+
+    if ($orderType === 'delivery' && in_array($newStatus, ['Collected'], true)) {
+        return false;
+    }
+    if ($orderType === 'pickup' && in_array($newStatus, ['Out for Delivery'], true)) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
  * Retrieve coupon details and validate constraints
  */
-function validate_coupon(PDO $pdo, string $code, float $orderSubtotal): array {
+function validate_coupon(PDO $pdo, string $code, float $orderSubtotal, bool $lockForUpdate = false): array {
     $code = trim(strtoupper($code));
     if (empty($code)) {
         return ['valid' => false, 'error' => 'Please enter a coupon code.'];
     }
 
+    $lockClause = $lockForUpdate ? ' FOR UPDATE' : '';
     $stmt = $pdo->prepare("
-        SELECT * FROM coupons
-        WHERE UPPER(code) = :code AND is_active = 1
-        LIMIT 1
+        SELECT *, (expires_at >= NOW()) AS is_unexpired
+        FROM coupons
+        WHERE code = :code AND is_active = 1
+        LIMIT 1{$lockClause}
     ");
     $stmt->execute([':code' => $code]);
     $coupon = $stmt->fetch();
@@ -566,7 +589,7 @@ function validate_coupon(PDO $pdo, string $code, float $orderSubtotal): array {
     }
 
     // Expiry check
-    if (strtotime($coupon['expires_at']) < time()) {
+    if (!(bool)$coupon['is_unexpired']) {
         return ['valid' => false, 'error' => 'This coupon has expired.'];
     }
 
