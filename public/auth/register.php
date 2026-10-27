@@ -7,9 +7,10 @@
  * password hashing with password_hash(), and automated session login.
  */
 
-$currentPage = 'register';
-$pageTitle = 'Register Account - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 if (is_logged_in()) {
     header('Location: ' . $appBase . '/index.php');
@@ -113,6 +114,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 }
+
+$currentPage = 'register';
+$pageTitle = 'Register Account - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="auth-wrapper" style="max-width: 540px;">

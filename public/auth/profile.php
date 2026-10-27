@@ -4,9 +4,10 @@
  * Component A: User Profile & Password Change
  */
 
-$currentPage = 'profile';
-$pageTitle = 'My Profile - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 require_login();
 
@@ -95,6 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_type']) && $_P
         $pwdSuccess = 'Password updated successfully!';
     }
 }
+
+$currentPage = 'profile';
+$pageTitle = 'My Profile - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <div class="site-container" style="max-width: 900px; margin: 1.5rem auto 3rem;">

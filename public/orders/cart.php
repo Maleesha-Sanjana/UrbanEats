@@ -7,9 +7,10 @@
  * (never trusts browser prices), coupon code preview, and stock validation.
  */
 
-$currentPage = 'cart';
-$pageTitle = 'Shopping Cart - UrbanEats Cloud Kitchen';
-require_once __DIR__ . '/../../includes/header.php';
+require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../includes/errors.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 $pdo = get_db_connection();
 
@@ -84,6 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Location: {$appBase}/orders/cart.php");
     exit;
 }
+
+$currentPage = 'cart';
+$pageTitle = 'Shopping Cart - UrbanEats Cloud Kitchen';
+require_once __DIR__ . '/../../includes/header.php';
 
 // 2. Fetch Live Cart Details from DB
 $cartData = get_cart_details($pdo);
