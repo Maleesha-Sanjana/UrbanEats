@@ -72,6 +72,8 @@ function get_db_connection(): PDO {
 
         try {
             $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], $options);
+            // Self-heal and auto-sync Component B GRN schema for teammates on run
+            auto_sync_database_schema_if_needed($pdo);
         } catch (PDOException $e) {
             // Log raw connection error to server log
             $logDir = __DIR__ . '/../logs';
@@ -94,4 +96,46 @@ function get_db_connection(): PDO {
     }
 
     return $pdo;
+}
+
+/**
+ * Auto-Synchronize Database Schema on Run
+ * Ensures teammates' local databases automatically get all Component B tables (grn_headers, grn_items)
+ * and sample transactions without requiring manual phpMyAdmin imports.
+ */
+function auto_sync_database_schema_if_needed(PDO $pdo): void {
+    static $synced = false;
+    if ($synced) return;
+    $synced = true;
+
+    try {
+        $check = $pdo->query("SHOW TABLES LIKE 'grn_headers'")->fetch();
+        if (!$check) {
+            $sqlFile = __DIR__ . '/../database/urbaneats_db.sql';
+            if (file_exists($sqlFile)) {
+                $handle = fopen($sqlFile, 'r');
+                if ($handle) {
+                    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
+                    $buffer = '';
+                    while (($line = fgets($handle)) !== false) {
+                        $trimmed = trim($line);
+                        if ($trimmed === '' || str_starts_with($trimmed, '--') || str_starts_with($trimmed, '/*')) {
+                            continue;
+                        }
+                        $buffer .= $line;
+                        if (str_ends_with($trimmed, ';')) {
+                            try {
+                                $pdo->exec($buffer);
+                            } catch (Exception $e) {}
+                            $buffer = '';
+                        }
+                    }
+                    fclose($handle);
+                    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+                }
+            }
+        }
+    } catch (Exception $e) {
+        // Fail silently so normal execution is never interrupted
+    }
 }

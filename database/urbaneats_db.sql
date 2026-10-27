@@ -503,23 +503,43 @@ INSERT INTO `stock_movements` (`dish_id`, `user_id`, `movement_type`, `quantity`
 (6, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00'),
 (21, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00');
 
--- 9a. Seed Goods Received Notes (GRN Headers - Component B)
+-- 9a. Seed Goods Received Notes (8 Audited GRN Headers - Component B)
 INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_name`, `invoice_reference`, `received_by_user_id`, `notes`, `total_cost`, `received_at`, `created_at`) VALUES
-(1, 'GRN-20261025-1001', 'Ceylon Agro Farms & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 42000.00, '2026-10-25 07:45:00', '2026-10-25 07:45:00'),
-(2, 'GRN-20261026-1002', 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled seafood supply in temperature-controlled boxes.', 47750.00, '2026-10-26 07:30:00', '2026-10-26 07:30:00'),
-(3, 'GRN-20261026-1003', 'Colombo Dairy & Beverages Depot', 'CDCD-7729', 3, 'Fresh curd, rose syrup, and king coconut batch from Kurunegala.', 15600.00, '2026-10-26 08:45:00', '2026-10-26 08:45:00'),
-(4, 'GRN-20261027-1004', 'Kandy Valley Organic Millers', 'KVP-9031', 4, 'Flour, spices, and fresh cutlet ingredients for day shifts.', 32000.00, '2026-10-27 07:15:00', '2026-10-27 07:15:00');
+(1, 'GRN-20261023-1001', 'Ceylon Agro Poultry & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 64500.00, '2026-10-23 07:45:00', '2026-10-23 07:45:00'),
+(2, 'GRN-20261024-1002', 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled lagoon crab, prawn, and cuttlefish in temperature-controlled coolers.', 71750.00, '2026-10-24 07:30:00', '2026-10-24 07:30:00'),
+(3, 'GRN-20261024-1003', 'Colombo Dairy & Beverages Depot', 'CDCD-7729', 3, 'Fresh curd, rose syrup, and king coconut batch from Kurunegala.', 27600.00, '2026-10-24 08:45:00', '2026-10-24 08:45:00'),
+(4, 'GRN-20261025-1004', 'Kandy Valley Organic Millers', 'KVP-9031', 4, 'Flour, godamba roti, cutlet crumbs, and fresh pol roti mix for shifts.', 38000.00, '2026-10-25 07:15:00', '2026-10-25 07:15:00'),
+(5, 'GRN-20261025-1005', 'Dutch Heritage Specialty Foods', 'DHF-3312', 5, 'Banana leaf wrapped lamprais prep and spiced cashew watalappan trays.', 49000.00, '2026-10-25 08:30:00', '2026-10-25 08:30:00'),
+(6, 'GRN-20261026-1006', 'Lanka Highland Spices & Livestock Depot', 'LHS-7890', 3, 'Tender mutton cut pieces, basmati rice, and poultry bites for devilled dish.', 62500.00, '2026-10-26 07:20:00', '2026-10-26 07:20:00'),
+(7, 'GRN-20261026-1007', 'Southern Coast Cuttlefish & Provisions', 'SCC-5541', 4, 'Cleaned cuttlefish rings, paneer blocks, and kottu seasonings.', 51750.00, '2026-10-26 08:00:00', '2026-10-26 08:00:00'),
+(8, 'GRN-20261027-1008', 'Ceylon Bakeries & Confectionery Ltd', 'CBC-8822', 3, 'Fresh hopper batter, egg pudding base, and jaggery custard.', 28500.00, '2026-10-27 07:00:00', '2026-10-27 07:00:00');
 
--- 9b. Seed Goods Received Note Items (GRN Details - Component B)
+-- 9b. Seed Goods Received Note Items (24 Item Transactions on Dishes 1-22 - Component B)
 INSERT INTO `grn_items` (`grn_id`, `dish_id`, `quantity_received`, `unit_cost`, `line_total`, `batch_number`, `expiry_date`) VALUES
-(1, 1, 50, 450.00, 22500.00, 'BATCH-20261025-A1', '2026-10-28'),
-(1, 2, 30, 650.00, 19500.00, 'BATCH-20261025-A2', '2026-10-27'),
-(2, 3, 15, 1600.00, 24000.00, 'BATCH-20261026-B1', '2026-10-29'),
-(2, 14, 25, 950.00, 23750.00, 'BATCH-20261026-B2', '2026-10-29'),
-(3, 21, 45, 200.00, 9000.00, 'BATCH-20261026-C1', '2026-11-02'),
-(3, 22, 60, 110.00, 6600.00, 'BATCH-20261026-C2', '2026-11-05'),
-(4, 6, 70, 380.00, 26600.00, 'BATCH-20261027-D1', '2026-10-30'),
-(4, 13, 90, 60.00, 5400.00, 'BATCH-20261027-D2', '2026-10-29');
+(1, 1, 50, 450.00, 22500.00, 'BATCH-20261023-A1', '2026-10-27'),
+(1, 4, 30, 800.00, 24000.00, 'BATCH-20261023-A2', '2026-10-28'),
+(1, 10, 30, 600.00, 18000.00, 'BATCH-20261023-A3', '2026-10-26'),
+(2, 3, 20, 1600.00, 32000.00, 'BATCH-20261024-B1', '2026-10-28'),
+(2, 5, 25, 1100.00, 27500.00, 'BATCH-20261024-B2', '2026-10-27'),
+(2, 14, 15, 816.67, 12250.00, 'BATCH-20261024-B3', '2026-10-29'),
+(3, 20, 40, 300.00, 12000.00, 'BATCH-20261024-C1', '2026-11-04'),
+(3, 21, 45, 200.00, 9000.00, 'BATCH-20261024-C2', '2026-11-01'),
+(3, 22, 60, 110.00, 6600.00, 'BATCH-20261024-C3', '2026-11-05'),
+(4, 6, 70, 380.00, 26600.00, 'BATCH-20261025-D1', '2026-10-30'),
+(4, 13, 90, 60.00, 5400.00, 'BATCH-20261025-D2', '2026-10-29'),
+(4, 17, 40, 150.00, 6000.00, 'BATCH-20261025-D3', '2026-10-28'),
+(5, 2, 35, 750.00, 26250.00, 'BATCH-20261025-E1', '2026-10-27'),
+(5, 7, 30, 520.00, 15600.00, 'BATCH-20261025-E2', '2026-10-28'),
+(5, 18, 35, 204.29, 7150.00, 'BATCH-20261025-E3', '2026-11-05'),
+(6, 11, 25, 1400.00, 35000.00, 'BATCH-20261026-F1', '2026-10-29'),
+(6, 12, 30, 550.00, 16500.00, 'BATCH-20261026-F2', '2026-10-29'),
+(6, 15, 25, 440.00, 11000.00, 'BATCH-20261026-F3', '2026-10-28'),
+(7, 8, 30, 825.00, 24750.00, 'BATCH-20261026-G1', '2026-10-29'),
+(7, 9, 25, 480.00, 12000.00, 'BATCH-20261026-G2', '2026-10-30'),
+(7, 14, 20, 750.00, 15000.00, 'BATCH-20261026-G3', '2026-10-30'),
+(8, 16, 40, 300.00, 12000.00, 'BATCH-20261027-H1', '2026-10-29'),
+(8, 19, 35, 300.00, 10500.00, 'BATCH-20261027-H2', '2026-11-03'),
+(8, 18, 30, 200.00, 6000.00, 'BATCH-20261027-H3', '2026-11-06');
 
 -- 10. Seed Coupons (6 Promotional Codes)
 INSERT INTO `coupons` (`id`, `code`, `discount_type`, `discount_value`, `min_order_amount`, `max_discount`, `usage_limit`, `times_used`, `expires_at`, `is_active`) VALUES
