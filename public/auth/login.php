@@ -122,15 +122,6 @@ require_once __DIR__ . '/../../includes/header.php';
             Don't have an account yet? <a href="<?= $appBase ?>/auth/register.php" style="font-weight: 700;">Create Customer Account</a>
         </div>
 
-        <!-- Viva & Testing Demonstration Helper Box -->
-        <div style="margin-top: 2rem; padding: 1rem; background: var(--bg-subtle); border-radius: var(--radius-md); border: 1px dashed var(--border-color); font-size: 0.8rem;">
-            <strong style="display: block; margin-bottom: 0.5rem; color: var(--color-secondary);">💡 Viva Demo Accounts (Default Password: <code>Password123!</code>):</strong>
-            <ul style="list-style: none; padding-left: 0; line-height: 1.6; color: var(--text-muted);">
-                <li><strong>Admin:</strong> <code>admin@urbaneats.lk</code> (Maleesha Sanjana)</li>
-                <li><strong>Kitchen Staff:</strong> <code>chef.kasun@urbaneats.lk</code> (Kasun Fernando)</li>
-                <li><strong>Customer:</strong> <code>amara.j@gmail.com</code> (Amara Jayawardena)</li>
-            </ul>
-        </div>
     </div>
 </div>
 
