@@ -1,15 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform - Automated End-to-End Integration Test Suite
- *
- * Simulates complete group flow:
- * 1. Customer registration & authentication
- * 2. Menu browse, category filter & stock verification
- * 3. Add to cart & checkout with atomic database transaction
- * 4. Stock deduction verification (reduce_stock)
- * 5. Kitchen queue status progression (Placed -> Preparing -> Ready -> Out for Delivery -> Completed)
- * 6. Admin sales reports aggregate calculation & audit log verification
- */
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/errors.php';
@@ -49,7 +38,7 @@ $orderCount = (int)$pdo->query("SELECT COUNT(*) FROM orders")->fetchColumn();
 assert_test("Database contains >= 20 seeded orders (Found: $orderCount)", $orderCount >= 20);
 
 // -------------------------------------------------------------------
-// TEST 2: Component A - Authentication, Hashing & Throttling
+// TEST 2: Authentication, Hashing & Throttling
 // -------------------------------------------------------------------
 echo "\n--- TEST SUITE 2: Component A (Identity & Access) ---\n";
 // Test login with valid admin credentials
@@ -62,7 +51,7 @@ $badLogin = attempt_login($pdo, 'admin@urbaneats.lk', 'WrongPassword!');
 assert_test("Authentication fails with incorrect password", $badLogin['success'] === false);
 
 // -------------------------------------------------------------------
-// TEST 3: Component B - Inventory & Safe Stock Deduction
+// TEST 3: Inventory & Safe Stock Deduction
 // -------------------------------------------------------------------
 echo "\n--- TEST SUITE 3: Component B (Menu & Inventory) ---\n";
 $dishId = 1; // Traditional Chicken Rice & Curry
@@ -91,7 +80,7 @@ try {
 assert_test("reduce_stock() strictly refuses to go below zero (throws exception)", $insufficientException);
 
 // -------------------------------------------------------------------
-// TEST 4: Component C - Atomic Checkout Transaction & Workflow
+// TEST 4: Atomic Checkout Transaction & Workflow
 // -------------------------------------------------------------------
 echo "\n--- TEST SUITE 4: Component C (Ordering, Payment & Kitchen Queue) ---\n";
 

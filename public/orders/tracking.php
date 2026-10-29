@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Live Order Tracking & Workflow Timeline
- *
- * Implements real-time order status tracking with interactive stepper nodes,
- * audit history logs, and customer self-service cancellation when in 'Placed' status.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

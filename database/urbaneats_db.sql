@@ -1,6 +1,5 @@
 -- ============================================================================
 -- UrbanEats Cloud Kitchen Platform - Database Schema & Seed Data
--- Module: IT3113 Advanced Web Technologies
 -- Compatible with MySQL 8.x and MariaDB (phpMyAdmin importable)
 -- Normalized to 3NF with Primary Keys, Foreign Keys, Indexes & Constraints
 -- ============================================================================
@@ -36,7 +35,7 @@ DROP TABLE IF EXISTS `roles`;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================================
--- COMPONENT A: IDENTITY, ACCESS AND ADMINISTRATION TABLES
+-- IDENTITY, ACCESS AND ADMINISTRATION TABLES
 -- ============================================================================
 
 -- Table 1: roles
@@ -112,7 +111,7 @@ CREATE TABLE `password_resets` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- COMPONENT B: MENU, CATALOGUE AND INVENTORY TABLES
+-- MENU, CATALOGUE AND INVENTORY TABLES
 -- ============================================================================
 
 -- Table 6: categories
@@ -181,7 +180,7 @@ CREATE TABLE `stock_movements` (
   CONSTRAINT `fk_movements_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table 9a: grn_headers (Goods Received Note master records - Student 2 Component B)
+-- Table 9a: grn_headers (Goods Received Note master records)
 CREATE TABLE `grn_headers` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `grn_number` VARCHAR(30) NOT NULL,
@@ -217,7 +216,7 @@ CREATE TABLE `grn_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- COMPONENT C: ORDERING, PAYMENT AND TRACKING TABLES
+-- ORDERING, PAYMENT AND TRACKING TABLES
 -- ============================================================================
 
 -- Table 10: coupons (Promotions & discount enforcement)
@@ -503,7 +502,7 @@ INSERT INTO `stock_movements` (`dish_id`, `user_id`, `movement_type`, `quantity`
 (6, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00'),
 (21, NULL, 'sale', -1, 'Deducted for Order #UE-20261027-006', '2026-10-27 09:00:00');
 
--- 9a. Seed Goods Received Notes (8 Audited GRN Headers - Component B)
+-- 9a. Seed Goods Received Notes (8 Audited GRN Headers)
 INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_name`, `invoice_reference`, `received_by_user_id`, `notes`, `total_cost`, `received_at`, `created_at`) VALUES
 (1, 'GRN-20261023-1001', 'Ceylon Agro Poultry & Spices Ltd', 'INV-CAG-8921', 5, 'Morning fresh poultry and spices batch delivery. All quality checks passed.', 64500.00, '2026-10-23 07:45:00', '2026-10-23 07:45:00'),
 (2, 'GRN-20261024-1002', 'Jaffna Coastal Fisheries Union', 'DN-JCF-4410', 5, 'Chilled lagoon crab, prawn, and cuttlefish in temperature-controlled coolers.', 71750.00, '2026-10-24 07:30:00', '2026-10-24 07:30:00'),
@@ -514,7 +513,7 @@ INSERT INTO `grn_headers` (`id`, `grn_number`, `supplier_name`, `invoice_referen
 (7, 'GRN-20261026-1007', 'Southern Coast Cuttlefish & Provisions', 'SCC-5541', 4, 'Cleaned cuttlefish rings, paneer blocks, and kottu seasonings.', 51750.00, '2026-10-26 08:00:00', '2026-10-26 08:00:00'),
 (8, 'GRN-20261027-1008', 'Ceylon Bakeries & Confectionery Ltd', 'CBC-8822', 3, 'Fresh hopper batter, egg pudding base, and jaggery custard.', 28500.00, '2026-10-27 07:00:00', '2026-10-27 07:00:00');
 
--- 9b. Seed Goods Received Note Items (24 Item Transactions on Dishes 1-22 - Component B)
+-- 9b. Seed Goods Received Note Items (24 Item Transactions on Dishes 1-22)
 INSERT INTO `grn_items` (`grn_id`, `dish_id`, `quantity_received`, `unit_cost`, `line_total`, `batch_number`, `expiry_date`) VALUES
 (1, 1, 50, 450.00, 22500.00, 'BATCH-20261023-A1', '2026-10-27'),
 (1, 4, 30, 800.00, 24000.00, 'BATCH-20261023-A2', '2026-10-28'),

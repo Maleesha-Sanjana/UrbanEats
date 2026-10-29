@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Administrator User Management
- *
- * Implements user listing, search, filtering by role, activation/deactivation,
- * role reassignment, and audit logging.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

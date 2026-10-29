@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Administrator Sales & Revenue Reports
- *
- * Implements date-range filtered reporting using advanced SQL queries
- * with JOIN, GROUP BY, and aggregate functions (SUM, COUNT, AVG).
- */
 
 $currentPage = 'reports';
 $pageTitle = 'Sales Reports & Analytics - UrbanEats Cloud Kitchen';

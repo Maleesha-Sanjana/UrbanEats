@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: System Audit Trail & Event Logging
- *
- * Provides immutable security auditing of all critical actions performed
- * across Components A (Auth/Admin), B (Menu/Stock), and C (Orders/Checkout).
- */
 
 $currentPage = 'admin';
 $pageTitle = 'System Audit Trail - UrbanEats Cloud Kitchen';

@@ -1,16 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Inventory & Stock Control Dashboard
- * Student 2: Denuka (Component B Owner)
- *
- * Key Responsibilities:
- * - Real-time kitchen inventory tracking with row-level locks
- * - Automated low-stock and depleted ingredient alerts
- * - Direct integration with official Goods Received Note (GRN) procurement system
- * - Kitchen wastage recording (damage, spillage, expired prep) and physical audits
- * - Audited stock movements history (linked with GRN inward receipts and Component C sales)
- */
 
 $currentPage = 'stock';
 $pageTitle = 'Stock & Inventory - UrbanEats Cloud Kitchen';
@@ -37,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!in_array($movementType, ['wastage', 'adjustment', 'restock'], true)) {
         set_flash('error', 'Invalid movement type selected.');
     } else {
-        // VIVA: Lock inventory row with FOR UPDATE inside a transaction to prevent race conditions
+        // Lock inventory row with FOR UPDATE inside a transaction to prevent race conditions
         $pdo->beginTransaction();
         try {
             $lockInvStmt = $pdo->prepare("SELECT current_stock FROM inventory WHERE dish_id = :id FOR UPDATE");

@@ -1,17 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Menu Catalogue & Public Showcase
- * Student 2: Denuka (Component B Owner)
- *
- * Key Responsibilities:
- * - Public menu browsing with real-time stock availability indicators
- * - Parameterized keyword search (dishes & culinary descriptions)
- * - Category slug filtering via active categories
- * - Whitelisted SQL ORDER BY clauses (prevents SQL injection through sort input)
- * - Dietary toggle filters (pure vegetarian, hot & spicy)
- * - Server-side pagination with calculated offsets
- */
 
 $currentPage = 'menu';
 $pageTitle = 'Explore Our Menu - UrbanEats Cloud Kitchen';
@@ -73,7 +60,7 @@ if ($dietaryType === 'veg') {
     $whereConditions[] = "d.is_spicy = 1";
 }
 
-// Whitelist sorting parameters (VIVA: Never concatenate $_GET['sort'] directly into SQL!)
+// Whitelist sorting parameters to prevent SQL injection
 $sortOrderBy = match ($sortKey) {
     'price_asc'  => 'd.price ASC',
     'price_desc' => 'd.price DESC',

@@ -1,16 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Goods Received Note (GRN) Management
- * Student 2: Denuka (Component B Owner)
- *
- * Professional Inventory Replenishment & Supplier Receipt Processing:
- * - Staff/Admin RBAC protection via require_role()
- * - Multi-item Goods Received Note (GRN) recording
- * - Inline Quick-Registration for newly arrived dishes not yet in DB
- * - Atomic database transaction updating master inventory & stock movements
- * - Printable GRN voucher and historical supplier receipt audit
- */
 
 $currentPage = 'stock';
 $pageTitle = 'Goods Received Notes (GRN) - UrbanEats Cloud Kitchen';
