@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Customer Registration Page
- *
- * Implements server-side validation, duplicate email checks,
- * password hashing with password_hash(), and automated session login.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

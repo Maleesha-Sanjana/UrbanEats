@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Administrator Dashboard
- *
- * Provides executive system metrics, operational KPIs, quick actions,
- * and live previews of recent orders and system audit activities.
- */
 
 $currentPage = 'admin';
 $pageTitle = 'Admin Dashboard - UrbanEats Cloud Kitchen';

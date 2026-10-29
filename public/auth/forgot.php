@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Forgot Password & Token Generation
- *
- * Implements cryptographically secure time-limited token generation.
- * Per assignment brief: The reset link is displayed on-screen for testing/evaluation.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

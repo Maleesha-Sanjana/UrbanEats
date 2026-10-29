@@ -64,7 +64,7 @@ function get_db_connection(): PDO {
 
         try {
             $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], $options);
-            // Self-heal and auto-sync Component B GRN schema for teammates on run
+            // Auto-sync database schema on run if needed
             auto_sync_database_schema_if_needed($pdo);
         } catch (PDOException $e) {
             // Log raw connection error to server log
@@ -92,8 +92,8 @@ function get_db_connection(): PDO {
 
 /**
  * Auto-Synchronize Database Schema on Run
- * Ensures teammates' local databases automatically get all Component B tables (grn_headers, grn_items)
- * and sample transactions without requiring manual phpMyAdmin imports.
+ * Ensures database automatically has all required tables (grn_headers, grn_items)
+ * and sample transactions without requiring manual SQL imports.
  */
 function auto_sync_database_schema_if_needed(PDO $pdo): void {
     static $synced = false;

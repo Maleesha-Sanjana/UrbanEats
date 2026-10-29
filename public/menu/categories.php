@@ -1,15 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Category Hierarchy Management
- * Student 2: Denuka (Component B Owner)
- *
- * Key Responsibilities:
- * - Staff/Admin RBAC protection via require_role()
- * - Category CRUD operations with URL slug normalization
- * - Aggregated dish count computation via SQL GROUP BY
- * - Status toggling (active vs hidden from customer navigation)
- */
 
 $currentPage = 'dishes';
 $pageTitle = 'Manage Categories - UrbanEats Cloud Kitchen';
@@ -108,7 +97,7 @@ if (isset($_GET['edit_id'])) {
 }
 
 // Fetch all categories with real-time dish count aggregations
-// VIVA: LEFT JOIN ensures categories without any dishes yet still show 0 instead of being omitted
+// LEFT JOIN ensures categories without any dishes yet still show 0 instead of being omitted
 $categoriesSummaryQuery = "
     SELECT c.id, c.name, c.slug, c.description, c.is_active, c.created_at,
            COUNT(d.id) AS dish_count

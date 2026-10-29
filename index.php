@@ -1,10 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Root Entry Point
- *
- * Automatically routes incoming requests from the project root to the public application directory.
- */
 
 $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 $query = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';

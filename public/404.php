@@ -1,8 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * 404 Not Found Page
- */
 
 $pageTitle = '404 - Page Not Found';
 http_response_code(404);

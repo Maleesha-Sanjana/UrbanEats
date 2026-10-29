@@ -1,16 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Transaction-Safe Checkout Engine
- *
- * Implements atomic single database transaction:
- * - Re-reads prices & stock directly from DB under lock (never trusts client prices)
- * - Inserts order & order_items (with price snapshot)
- * - Calls transaction-safe reduce_stock() refusing negative stock
- * - Records simulated payment
- * - Records order status history
- * - Full ACID rollback on ANY failure
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';
@@ -235,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     }
                 }
 
-                // 6. Central Audit Trail (Component A contract)
+                // 6. Central Audit Trail
                 log_action($pdo, 'ORDER_PLACED', "Order {$orderNumber} placed for " . format_price($grandTotal) . " via {$paymentMethod}", $userId);
 
                 // Commit Transaction

@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Authentication & Access Control Module
- *
- * Implements role-based access control (RBAC), login throttling,
- * secure session management, password resets, and centralized audit logging.
- */
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/errors.php';
@@ -130,7 +123,7 @@ function require_role($roles): void {
 
 /**
  * Centralized Audit Logger
- * Components A, B, and C call this function to record system audit entries.
+ * Records system audit entries into audit_log.
  */
 function log_action(PDO $pdo, string $action, string $details, ?int $userId = null): bool {
     try {

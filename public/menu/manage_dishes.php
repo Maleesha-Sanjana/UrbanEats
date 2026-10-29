@@ -1,16 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Dish Catalogue Management (Staff & Admin CRUD)
- * Student 2: Denuka (Component B Owner)
- *
- * Key Responsibilities:
- * - Staff/Admin RBAC enforcement via require_role()
- * - Full CRUD with parameterized prepared statements
- * - Soft deletion pattern (setting is_active = 0 preserves past order references)
- * - Safe image upload integration (MIME, size, extension, unguessable filename)
- * - Initial inventory row creation and audit log recording
- */
 
 $currentPage = 'dishes';
 $pageTitle = 'Manage Dishes - UrbanEats Cloud Kitchen';
@@ -38,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submittedAction = $_POST['action'] ?? '';
 
     // Action A: Soft Delete / Archive Dish
-    // VIVA EXPLANATION: Soft delete sets is_active = 0 so historical order receipts never break
+    // Soft delete sets is_active = 0 so historical order receipts never break
     if ($submittedAction === 'delete') {
         $dishId = (int)($_POST['dish_id'] ?? 0);
         

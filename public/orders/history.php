@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Customer Order History
- *
- * Displays personal order history, status progressions,
- * and direct links to live tracking timelines and invoices.
- */
 
 $currentPage = 'orders';
 $pageTitle = 'My Order History - UrbanEats Cloud Kitchen';

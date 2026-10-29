@@ -1,11 +1,6 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Sample Configuration File
- *
- * Copy this file to 'config.php' or update 'db.php' with your local environment settings.
- * DO NOT commit production passwords to version control.
- */
+// Sample Configuration File
+// Copy this file to 'config.php' or update 'db.php' with your local environment settings.
 
 return [
     'db' => [

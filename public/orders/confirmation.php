@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Printable Order Confirmation & Invoice
- *
- * Provides printable order receipt, itemized financial summary,
- * payment verification details, and direct tracking link.
- */
 
 $currentPage = 'orders';
 $pageTitle = 'Order Confirmation & Invoice - UrbanEats Cloud Kitchen';

@@ -1,6 +1,5 @@
 -- ============================================================================
 -- UrbanEats Cloud Kitchen Platform - Database Schema & Seed Data
--- Module: IT3113 Advanced Web Technologies
 -- Compatible with MySQL 8.x and MariaDB (phpMyAdmin importable)
 -- Normalized to 3NF with Primary Keys, Foreign Keys, Indexes & Constraints
 -- ============================================================================
@@ -38,7 +37,7 @@ DROP TABLE IF EXISTS `roles`;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================================
--- COMPONENT A: IDENTITY, ACCESS AND ADMINISTRATION TABLES
+-- IDENTITY, ACCESS AND ADMINISTRATION TABLES
 -- ============================================================================
 
 -- Table 1: roles
@@ -114,7 +113,7 @@ CREATE TABLE `password_resets` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- COMPONENT B: MENU, CATALOGUE AND INVENTORY TABLES
+-- MENU, CATALOGUE AND INVENTORY TABLES
 -- ============================================================================
 
 -- Table 6: categories
@@ -263,7 +262,7 @@ CREATE TABLE `stock_adjustment_notes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- COMPONENT C: ORDERING, PAYMENT AND TRACKING TABLES
+-- ORDERING, PAYMENT AND TRACKING TABLES
 -- ============================================================================
 
 -- Table 10: coupons (Promotions & discount enforcement)

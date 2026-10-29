@@ -1,8 +1,4 @@
-# ==============================================================================
-# UrbanEats Cloud Kitchen Platform - Git Ignore Rules
-# Module: IT3113 Advanced Web Technologies
-# Student 2: Denuka (Component B - Menu, Catalogue & Inventory)
-# ==============================================================================
+# Git Ignore Rules
 
 # Local configuration overrides (Contains sensitive DB passwords / credentials)
 config/config.php

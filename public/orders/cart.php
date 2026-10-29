@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Shopping Cart & Totals Calculation
- *
- * Implements session-based cart, live database price verification
- * (never trusts browser prices), coupon code preview, and stock validation.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

@@ -1,12 +1,3 @@
-<?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Shared Footer Layout
- *
- * Implements semantic HTML5 footer, essential links, system disclaimer,
- * and lightweight vanilla JavaScript for responsive navigation and micro-interactions.
- */
-?>
     </main>
 
     <!-- Site Footer -->
@@ -76,7 +67,7 @@
                 </div>
             </div>
 
-            <!-- Bottom Bar & Academic Attribution -->
+            <!-- Bottom Bar -->
             <div class="footer-bottom">
                 <p>&copy; <?= date('Y') ?> UrbanEats Cloud Kitchen Platform. All rights reserved.</p>
                 <p class="academic-note">

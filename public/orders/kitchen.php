@@ -1,12 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component C: Kitchen Order Queue & Workflow Engine
- *
- * Implements Kanban-style order ticket queue, transition validation
- * (Placed -> Preparing -> Ready -> Out for Delivery/Collected -> Completed),
- * state machine integrity, and audit tracking.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

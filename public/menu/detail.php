@@ -1,15 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component B: Dish Detail View & Live Kitchen Availability
- * Student 2: Denuka (Component B Owner)
- *
- * Key Responsibilities:
- * - High-resolution dish presentation with fallback handling
- * - Live real-time inventory level integration
- * - Culinary attributes and dietary indicators (pure veg, spice level)
- * - Quantity-bounded cart integration (prevents ordering beyond available stock)
- */
 
 $currentPage = 'menu';
 require_once __DIR__ . '/../../includes/header.php';
