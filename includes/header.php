@@ -1,4 +1,5 @@
 <?php
+
 /**
  * UrbanEats Cloud Kitchen Platform
  * Shared Header Layout
