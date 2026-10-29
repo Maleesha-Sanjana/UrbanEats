@@ -1,176 +1,171 @@
 # UrbanEats Cloud Kitchen Platform
 
 **Module:** IT3113 Advanced Web Technologies (Year 3, Semester 1)  
-**Assignment Type:** Group Project with Individual Component Defense & Viva  
-**Technology Stack:** HTML5, Hand-crafted CSS3, PHP 8.x (Vanilla PDO), MySQL / MariaDB (phpMyAdmin)
+**Assessment Type:** Group Project with Individual Component and Individual Viva  
+**Technology Stack:** HTML5, Hand-written CSS3, PHP 8.x (PDO), MySQL / MariaDB (phpMyAdmin)  
 
 ---
 
-## 🍽️ Project Overview
+## 1. Project Overview
 
-**UrbanEats** is a complete, database-driven web application designed for a high-volume cloud kitchen operating in Colombo, Sri Lanka. Unlike traditional dine-in restaurants, UrbanEats processes orders exclusively through express home delivery and kitchen counter pickup.
+**UrbanEats** is a database-driven web application developed for a cloud kitchen business in Sri Lanka. Operating exclusively through delivery and customer pickup, the platform provides:
+- Online customer menu browsing, cart management, and order tracking.
+- Kitchen staff order fulfillment queues, live inventory management, and stock adjustments.
+- Administrative user access control, audit event logging, and executive sales reporting.
 
-The platform eliminates paper ticket errors, prevents ordering out-of-stock dishes via atomic inventory locking, offers real-time order tracking timelines, and delivers business intelligence reports for management.
+The system is developed using vanilla PHP 8.x with PDO prepared statements, semantic HTML5, responsive hand-written CSS3, and a 3NF normalized MySQL database.
 
 ---
 
-## 👥 Component Ownership & Scope
+## 2. Test Login Accounts
 
-| Component | Scope | Key Features |
-|---|---|---|
-| **Component A: Identity, Access & Administration** *(Student 1)* | User Authentication, RBAC, Sessions, Admin Portal & Security | Registration, secure login with `password_hash()`, login throttling (lockout after 5 failed attempts), session hardening & inactivity timeout, time-limited password recovery tokens, centralized audit logger (`log_action()`), user management (role promotion, deactivation), access-denied handling. |
-| **Component B: Menu, Catalogue & Inventory** *(Student 2)* | Catalogue CRUD, Stock Control, Search, Filtering & Image Upload | Public menu with category pills, keyword search, price & name sorting (whitelisted), dietary filters (veg, spicy), pagination, dish detail view, staff CRUD with soft delete (`is_active = 0`), secure image upload (MIME, size, extension, unguessable filenames), transaction-safe `reduce_stock()` refusing negative stock, restock and wastage audits. |
-| **Component C: Ordering, Payment & Tracking** *(Student 3)* | Cart, Checkout Transaction, Workflow Engine & Reports | Session-based cart with live DB price re-verification, atomic database transaction checkout (orders, items, payment, stock deduction, rollback), coupon engine (percentage/fixed discounts, usage limits), order workflow state machine (`Placed` &rarr; `Preparing` &rarr; `Ready` &rarr; `Out for Delivery` / `Collected` &rarr; `Completed`), printable invoice receipts, kitchen queue board, sales reports (JOIN, GROUP BY, aggregates). |
+All test accounts use the default password: **`Password123!`**
 
+| Role | Email | Password | Access / Purpose |
+|---|---|---|---|
+| **Administrator** | `admin@urbaneats.lk` | `Password123!` | System dashboard, user management, audit logs, sales reports |
+| **Kitchen Staff** | `chef.kasun@urbaneats.lk` | `Password123!` | Kitchen order queue, dish management, stock/inventory dashboard |
+| **Customer** | `amara.j@gmail.com` | `Password123!` | Menu browsing, cart, order placement, order tracking |
 
-## 🚀 Setup & Installation Guide
+---
+
+## 3. Setup and Installation
 
 ### Prerequisites
-- **Web Server:** Apache (XAMPP, WAMP, MAMP, or LAMP) or standalone PHP 8.x CLI
-- **Database:** MySQL 8.x or MariaDB managed via phpMyAdmin
-- **Browser:** Any modern web browser (Chrome, Firefox, Safari, Edge)
+- Web server environment: **XAMPP / WAMP / LAMP** running Apache and MySQL/MariaDB with **PHP 8.0 or higher**.
+- Web browser (Chrome, Firefox, Edge, Safari).
 
-### Step 1: Clone or Place Project
-Place the project directory into your web server's root folder:
-- **XAMPP (Windows):** `C:\xampp\htdocs\UrbanEats`
+### Step 1: Place Project Files
+Copy the project folder into your web server's document root (`htdocs` or `www`):
 - **XAMPP (macOS):** `/Applications/XAMPP/xamppfiles/htdocs/UrbanEats`
+- **XAMPP (Windows):** `C:\xampp\htdocs\UrbanEats`
 - **WAMP (Windows):** `C:\wamp64\www\UrbanEats`
 
-### Step 2: Import Database Schema & Seed Data
+### Step 2: Import the Database
 1. Open **phpMyAdmin** in your browser (`http://localhost/phpmyadmin`).
-2. Click **Import** in the top navigation tab.
-3. Choose the SQL file located at:
+2. Navigate to the **Import** tab.
+3. Select the SQL script located at:
    ```
    database/urbaneats_db.sql
    ```
-4. Click **Import** / **Go** at the bottom.
-5. The script automatically creates the `urbaneats_db` database, generates all 14 normalized 3NF tables with foreign keys and constraints, and seeds over 20 realistic rows into every main table.
+4. Click **Import** (or **Go**).
+5. The script creates the `urbaneats_db` database, generates all 14 tables with constraints and foreign keys, and inserts realistic seed data (including test user accounts).
 
-*Alternatively, import via MySQL Command Line:*
-```bash
-mysql -u root -p < database/urbaneats_db.sql
-```
-
-### Step 3: Configure Database Connection
-The application reads settings from `config/db.php`. By default, it connects to:
+### Step 3: Database Configuration
+The application connects using `config/db.php`. Default settings:
 - **Host:** `127.0.0.1`
 - **Port:** `3306`
 - **Database:** `urbaneats_db`
 - **Username:** `root`
 - **Password:** *(empty)*
 
-If your local MySQL environment requires a custom password, copy `config/config.sample.php` to `config/config.php` and specify your credentials:
-```php
-return [
-    'db' => [
-        'host' => '127.0.0.1',
-        'port' => 3306,
-        'dbname' => 'urbaneats_db',
-        'username' => 'root',
-        'password' => 'your_custom_password',
-        'charset' => 'utf8mb4'
-    ]
-];
-```
+If your local MySQL instance has a custom password, copy `config/config.sample.php` to `config/config.php` and set your credentials.
 
-### Step 4: Run the Application
-Open your browser and navigate to:
+### Step 4: Access the Application
+Open your web browser and navigate to:
 ```
 http://localhost/UrbanEats/public/index.php
 ```
 
-*(If testing via built-in PHP development server from terminal):*
-```bash
-# From workspace root
-php -S 127.0.0.1:8000 -t /path/to/parent_directory
-# Then open: http://127.0.0.1:8000/UrbanEats/public/index.php
-```
+---
+
+## 4. Component Scope and Features
+
+### Component A: Identity, Access and Administration (Student 1)
+- **User Authentication:** Registration, login, logout, profile update, and change-password functionality.
+- **Security & Session Hardening:** Password hashing using `password_hash()` and `password_verify()`, `session_regenerate_id()` on login, HTTP-only cookie flags, and a 30-minute inactivity session timeout.
+- **Access Control:** Reusable guard functions (`require_login()`, `require_role()`) and a custom 403 Access Denied page.
+- **Login Throttling:** Temporary account lockout (15 minutes) after 5 consecutive failed login attempts, recorded in `login_attempts`.
+- **Password Reset:** Time-limited cryptographic token reset workflow (token displayed on-screen per assignment guidelines).
+- **Centralized Audit Trail:** Reusable `log_action()` function recording user events, IP addresses, and timestamps.
+- **User Administration:** Admin user management panel with keyword search, role filtering, account activation/deactivation, and role reassignment.
+
+### Component B: Menu, Catalogue and Inventory (Student 2)
+- **Public Menu:** Menu listing with category filter pills, keyword search, price and name sorting (whitelisted), and pagination.
+- **Dish Details:** Individual dish page displaying pricing, description, spice level, and real-time availability.
+- **Staff Catalogue Management:** Full CRUD operations for dishes and categories, including soft deletion (`is_active = 0`) to preserve historical order records.
+- **Secure Image Uploads:** Multi-layer validation checking file extensions, MIME types, and maximum file size (2MB) with randomized filenames.
+- **Inventory & Stock Control:** Stock management dashboard highlighting low-stock and out-of-stock items, stock adjustment logging (restock/wastage), and the transaction-safe `reduce_stock()` function.
+
+### Component C: Ordering, Payment and Tracking (Student 3)
+- **Shopping Cart:** Session-based cart with live database price and availability re-verification.
+- **Checkout Transaction:** Atomic database transaction handling order insertion, order items snapshot, payment record, and stock deduction with complete rollback on failure.
+- **Coupons:** Promotional code verification checking expiry dates, minimum order values, and usage limits.
+- **Order Workflow:** Status progression state machine (`Placed` → `Preparing` → `Ready` → `Out for Delivery` / `Collected` → `Completed` / `Cancelled`) with historical timeline logging.
+- **Customer Tracking & Invoices:** Order tracking view and printable invoice receipts.
+- **Reporting:** Kitchen staff live queue and administrative sales reports with date range filtering, revenue summaries, and top-selling dishes.
 
 ---
 
-## 🧪 Running Automated Integration Tests
-
-An automated test suite is provided to verify schema integrity, authentication, inventory stock deductions, checkout transactions, and reporting:
-```bash
-php tests/test_end_to_end.php
-```
-All 14 comprehensive test cases will execute and output formatted pass/fail assertions.
-
----
-
-## 📁 Repository Structure (Appendix A Compliant)
+## 5. Project Directory Structure
 
 ```
-urbaneats/
+UrbanEats/
 ├── config/
-│   ├── db.php                      # Shared PDO connection singleton & error handler
-│   └── config.sample.php           # Template configuration without credentials
+│   ├── config.sample.php        # Sample configuration template
+│   └── db.php                   # Shared PDO database connection singleton
 ├── database/
-│   └── urbaneats_db.sql            # Master schema (14 tables, 3NF) & 20+ seed rows
-├── docs/
-│   ├── GROUP_REPORT.md             # Complete 10-page equivalent group report
-│   ├── TEST_PLAN.md                # 45+ formal test cases (Functional, Security, Edge)
-│   └── VIVA_PREPARATION_GUIDE.md   # Comprehensive viva defense guide for Components A, B, C
+│   ├── reset_db.php             # Database reset utility
+│   └── urbaneats_db.sql         # Database schema (14 tables, 3NF) and seed data
 ├── includes/
-│   ├── auth.php                    # RBAC, login throttling, session hardening, audit log
-│   ├── csrf.php                    # Cryptographic synchronizer CSRF token validation
-│   ├── errors.php                  # Central error/exception handler logging to logs/error.log
-│   ├── footer.php                  # Semantic footer with role links & vanilla JS micro-interactions
-│   ├── functions.php               # Helpers: reduce_stock, get_cart_details, upload_dish_image
-│   └── header.php                  # Semantic header with dynamic role navigation & cart counter
+│   ├── auth.php                 # Authentication, RBAC, session management, and audit log
+│   ├── csrf.php                 # Cryptographic CSRF token validation
+│   ├── errors.php               # Centralized error and exception handler
+│   ├── footer.php               # Shared semantic footer
+│   ├── functions.php            # Shared helper functions
+│   └── header.php               # Shared semantic header with role-based navigation
 ├── logs/
-│   └── error.log                   # Server-side error and security audit log
+│   └── error.log                # Server error log file
 ├── public/
+│   ├── 403.php                  # Access Denied page
+│   ├── 404.php                  # Page Not Found
+│   ├── 500.php                  # Server Error page
+│   ├── index.php                # Public landing page
 │   ├── admin/
-│   │   ├── audit_log.php           # Component A: Audit log viewer with filters
-│   │   ├── dashboard.php           # Component A: Executive admin control center
-│   │   ├── reports.php             # Component C: Date-filtered sales and revenue analytics
-│   │   └── users.php               # Component A: User accounts, status toggle & role changes
+│   │   ├── audit_log.php        # Audit trail viewer (Component A)
+│   │   ├── dashboard.php        # Administrator dashboard (Component A)
+│   │   ├── reports.php          # Sales reports (Component C)
+│   │   └── users.php            # User management (Component A)
 │   ├── auth/
-│   │   ├── forgot.php              # Component A: Password reset request & on-screen token
-│   │   ├── login.php               # Component A: Secure login with throttling lockout
-│   │   ├── logout.php              # Component A: Session destruction & audit logging
-│   │   ├── profile.php             # Component A: Profile edit & password update
-│   │   ├── register.php            # Component A: Customer registration with validation
-│   │   └── reset.php               # Component A: Token-based password reset submission
+│   │   ├── forgot.php           # Password reset request (Component A)
+│   │   ├── login.php            # Secure login (Component A)
+│   │   ├── logout.php           # Session logout (Component A)
+│   │   ├── profile.php          # Profile management (Component A)
+│   │   ├── register.php         # Customer registration (Component A)
+│   │   └── reset.php            # Password reset confirmation (Component A)
 │   ├── css/
-│   │   └── style.css               # Shared pure hand-crafted CSS3 with design tokens
+│   │   └── style.css            # Shared hand-written CSS stylesheet
 │   ├── menu/
-│   │   ├── categories.php          # Component B: Category hierarchy management
-│   │   ├── detail.php              # Component B: Dish detail with live stock status
-│   │   ├── list.php                # Component B: Public menu with search, sort & pagination
-│   │   ├── manage_dishes.php       # Component B: Staff CRUD, soft delete & image upload
-│   │   └── stock.php               # Component B: Stock dashboard, restock & wastage tracking
+│   │   ├── categories.php       # Category management (Component B)
+│   │   ├── detail.php           # Dish detail view (Component B)
+│   │   ├── grn.php              # Goods received notes (Component B)
+│   │   ├── list.php             # Public menu catalogue (Component B)
+│   │   ├── manage_dishes.php    # Dish CRUD operations (Component B)
+│   │   └── stock.php            # Stock management dashboard (Component B)
 │   ├── orders/
-│   │   ├── cart.php                # Component C: Session cart with live DB price checks
-│   │   ├── checkout.php            # Component C: Atomic transaction checkout with rollback
-│   │   ├── confirmation.php        # Component C: Printable invoice and receipt
-│   │   ├── history.php             # Component C: Customer order history
-│   │   ├── kitchen.php             # Component C: Kitchen order queue & workflow progression
-│   │   └── tracking.php            # Component C: Live order timeline & customer cancellation
-│   ├── uploads/
-│   │   ├── .htaccess               # Security: Prevents script execution in upload directory
-│   │   └── *.jpg                   # Dish images
-│   ├── 403.php                     # Friendly 403 Forbidden Access Denied page
-│   ├── 404.php                     # Friendly 404 Not Found page
-│   ├── 500.php                     # Friendly 500 Server Error page
-│   └── index.php                   # Public landing page, promotions & signature specials
+│   │   ├── cart.php             # Session cart (Component C)
+│   │   ├── checkout.php         # Checkout transaction (Component C)
+│   │   ├── confirmation.php     # Order confirmation & invoice (Component C)
+│   │   ├── history.php          # Order history (Component C)
+│   │   ├── kitchen.php          # Kitchen staff order queue (Component C)
+│   │   └── tracking.php         # Live order tracking timeline (Component C)
+│   └── uploads/
+│       └── *.jpg                # Uploaded dish images
 ├── tests/
-│   └── test_end_to_end.php         # Automated integration test runner
-└── README.md                       # Setup, credentials, and architecture overview
+│   ├── test_end_to_end.php      # End-to-end integration test suite
+│   └── verify_component_b.php   # Component B validation suite
+└── README.md
 ```
 
 ---
 
-## 🛡️ Security Measures Summary
+## 6. Security Implementation Summary
 
-1. **SQL Injection Defense:** All database queries utilize PDO prepared statements with strict parameter binding. Column names for sorting in `menu/list.php` are strictly whitelisted against an allowed array.
-2. **Cross-Site Scripting (XSS):** All dynamic browser outputs are escaped using `htmlspecialchars(..., ENT_QUOTES, 'UTF-8')` through the global helper `e()`.
-3. **Cross-Site Request Forgery (CSRF):** Synchronizer tokens generated via `bin2hex(random_bytes(32))` are embedded in all POST forms via `csrf_field()` and verified via `validate_csrf_or_fail()` with timing-safe `hash_equals()`.
-4. **Password Hashing:** Passwords are never stored in plaintext; hashed using `password_hash($password, PASSWORD_DEFAULT)` and verified with `password_verify()`.
-5. **Login Throttling:** 5 consecutive failed login attempts trigger an automatic 15-minute lockout recorded in `login_attempts` and `users`.
-6. **Session Hardening:** `session_regenerate_id(true)` on login prevents session fixation; `session.cookie_httponly = 1`, `session.cookie_samesite = Lax`, and 30-minute inactivity timeouts are enforced.
-7. **Secure File Uploads:** Uploaded dish images are verified for MIME type (`finfo`), file extension, maximum size (2MB), renamed with cryptographically unguessable filenames (`dish_...`), and `.htaccess` disables script execution within `public/uploads/`.
-8. **Role-Based Access Control (RBAC):** Guard functions `require_login()` and `require_role()` protect every restricted endpoint and return friendly 403 pages upon unauthorized access.
-9. **Race Condition Stock Defense:** Stock reduction uses atomic conditional decrements (`WHERE dish_id = :id AND current_stock >= :qty`) within single database transactions with automatic rollback on error.
-10. **Error Masking:** Raw SQL and PHP exceptions are never shown to end-users; friendly styled error pages are displayed while details are written to `logs/error.log`.
+1. **SQL Injection Defense:** 100% PDO prepared statements with parameter binding throughout all components. Dynamic order parameters are strictly whitelisted.
+2. **Cross-Site Scripting (XSS):** Context-aware output escaping using `htmlspecialchars()` with `ENT_QUOTES` via helper function `e()`.
+3. **Cross-Site Request Forgery (CSRF):** Synchronizer token pattern using `random_bytes(32)` validated with `hash_equals()` on all POST submissions.
+4. **Password Security:** Hashes stored using `password_hash(..., PASSWORD_DEFAULT)` and verified with `password_verify()`.
+5. **Session Hardening:** `session_regenerate_id(true)` upon login, HTTP-only cookie flags, and 30-minute inactivity timeouts.
+6. **Access Control:** Server-side role enforcement on every restricted page using `require_role()`.
+7. **File Upload Security:** Multi-step verification checking MIME type, file extension, file size, and renaming stored files.
+8. **Error Handling:** Raw SQL/PHP errors are captured by a custom exception handler and written to `logs/error.log`; friendly error pages are displayed to end-users.

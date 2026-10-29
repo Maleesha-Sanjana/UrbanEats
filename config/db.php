@@ -1,12 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Shared Database Connection (PDO)
- *
- * Implements a singleton PDO connection instance with secure prepared statement settings,
- * UTF-8 collation, and robust error handling.
- */
-
 // Load custom config if present, or use defaults
 $configFile = __DIR__ . '/config.php';
 $config = file_exists($configFile) ? require $configFile : [
