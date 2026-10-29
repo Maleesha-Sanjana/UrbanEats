@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Shared Helper Functions for Components A, B, and C
- *
- * Provides shared utilities for sanitization, currency formatting,
- * flash messaging, secure file uploads, stock control, and order workflow.
- */
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/auth.php';

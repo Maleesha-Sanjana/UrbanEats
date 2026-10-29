@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * CSRF Protection Module
- *
- * Implements synchronizer token pattern using cryptographically secure random bytes
- * and timing-attack-safe comparison via hash_equals().
- */
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

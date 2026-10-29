@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Centralized Error & Exception Handling
- *
- * Catches all runtime errors, warnings, and uncaught exceptions.
- * Prevents raw PHP/SQL error leaks to users and logs all issues to logs/error.log.
- */
 
 // Error logging target
 define('ERROR_LOG_PATH', dirname(__DIR__) . '/logs/error.log');

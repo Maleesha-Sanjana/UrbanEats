@@ -1,13 +1,5 @@
 <?php
 
-/**
- * UrbanEats Cloud Kitchen Platform
- * Shared Header Layout
- *
- * Implements semantic HTML5 header, dynamic role-based navigation,
- * shopping cart item indicator, and flash message rendering.
- */
-
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/errors.php';
 require_once __DIR__ . '/auth.php';
