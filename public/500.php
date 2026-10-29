@@ -1,8 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * 500 Internal Server Error Page
- */
 
 $pageTitle = '500 - Internal Server Error';
 http_response_code(500);

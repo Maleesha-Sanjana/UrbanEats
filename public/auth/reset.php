@@ -1,11 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: Password Reset Submission
- *
- * Validates the time-limited cryptographic token against password_resets,
- * updates user password hash, and marks token as used.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';
