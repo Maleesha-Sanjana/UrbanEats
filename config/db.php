@@ -101,8 +101,9 @@ function auto_sync_database_schema_if_needed(PDO $pdo): void {
     $synced = true;
 
     try {
-        $check = $pdo->query("SHOW TABLES LIKE 'grn_headers'")->fetch();
-        if (!$check) {
+        $checkSuppliers = $pdo->query("SHOW TABLES LIKE 'suppliers'")->fetch();
+        $checkSan = $pdo->query("SHOW TABLES LIKE 'stock_adjustment_notes'")->fetch();
+        if (!$checkSuppliers || !$checkSan) {
             $sqlFile = __DIR__ . '/../database/urbaneats_db.sql';
             if (file_exists($sqlFile)) {
                 $handle = fopen($sqlFile, 'r');
