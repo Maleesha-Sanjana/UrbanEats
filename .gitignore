@@ -51,3 +51,8 @@ public/uploads/.htaccess
 !public/uploads/*.jpg
 !public/uploads/*.png
 !public/uploads/*.webp
+
+# Individual project report documents & working drafts (Excluded from Git repo)
+docs/
+*.docx
+

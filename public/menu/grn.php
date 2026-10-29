@@ -15,7 +15,16 @@ $currentUserId = (int)$currentUser['id'];
 $categoriesStmt = $pdo->query("SELECT id, name FROM categories WHERE is_active = 1 ORDER BY name ASC");
 $allCategories = $categoriesStmt->fetchAll();
 
-// 2. Fetch all active dishes for the GRN line item selector
+// 2. Fetch all active suppliers from Supplier Master (Supplier #1 is Internal Kitchen Store)
+$suppliersStmt = $pdo->query("
+    SELECT id, code, name, category, contact_person, phone 
+    FROM suppliers 
+    WHERE is_active = 1 
+    ORDER BY id ASC
+");
+$allSuppliers = $suppliersStmt->fetchAll();
+
+// 3. Fetch all active dishes for the GRN line item selector
 $dishesStmt = $pdo->query("
     SELECT d.id, d.name, d.price, c.name AS category_name, COALESCE(i.current_stock, 0) AS current_stock
     FROM dishes d
@@ -26,13 +35,48 @@ $dishesStmt = $pdo->query("
 ");
 $activeDishes = $dishesStmt->fetchAll();
 
-// 3. Handle POST Actions (Create GRN or Quick Add New Dish)
+// 4. Handle POST Actions (Create GRN, Quick Add Dish, Quick Add Supplier)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validate_csrf_or_fail();
 
     $action = $_POST['action'] ?? '';
 
-    // Action A: Quick Add New Dish to DB if it does not exist yet
+    // Action A: Quick Add New Supplier to DB
+    if ($action === 'quick_add_supplier') {
+        $supName    = trim($_POST['new_supplier_name'] ?? '');
+        $supCat     = in_array($_POST['new_supplier_cat'] ?? '', ['internal', 'external'], true) ? $_POST['new_supplier_cat'] : 'external';
+        $supContact = trim($_POST['new_supplier_contact'] ?? '');
+        $supPhone   = trim($_POST['new_supplier_phone'] ?? '');
+
+        if ($supName === '') {
+            set_flash('error', 'Supplier name is required.');
+        } else {
+            $prefix = 'SUP-' . strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $supName) ?: 'VEN', 0, 3));
+            $code = $prefix . '-' . random_int(10, 99);
+            try {
+                $insSup = $pdo->prepare("
+                    INSERT INTO suppliers (code, name, category, contact_person, phone, is_active, created_at)
+                    VALUES (:code, :name, :cat, :contact, :phone, 1, NOW())
+                ");
+                $insSup->execute([
+                    ':code'    => $code,
+                    ':name'    => $supName,
+                    ':cat'     => $supCat,
+                    ':contact' => $supContact ?: null,
+                    ':phone'   => $supPhone ?: null
+                ]);
+                $newSupId = (int)$pdo->lastInsertId();
+                log_action($pdo, 'SUPPLIER_ADDED_VIA_GRN', "Quick registered new supplier '{$supName}' (Code: {$code})", $currentUserId);
+                set_flash('success', "New supplier '{$supName}' registered! It is now selectable in the GRN form.");
+            } catch (Exception $e) {
+                set_flash('error', 'Failed to register supplier: ' . $e->getMessage());
+            }
+        }
+        header("Location: {$appBase}/menu/grn.php");
+        exit;
+    }
+
+    // Action B: Quick Add New Dish to DB if it does not exist yet
     if ($action === 'quick_add_dish') {
         $dishName     = trim($_POST['new_dish_name'] ?? '');
         $categoryId   = (int)($_POST['new_category_id'] ?? 0);
@@ -77,15 +121,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Action B: Save Official Goods Received Note (GRN)
+    // Action C: Save Official Goods Received Note (GRN) / Production Receipt
     if ($action === 'create_grn') {
-        $supplierName = trim($_POST['supplier_name'] ?? '');
-        $invoiceRef   = trim($_POST['invoice_reference'] ?? '');
-        $notes        = trim($_POST['notes'] ?? '');
-        $itemsData    = $_POST['items'] ?? [];
+        $supplierId = (int)($_POST['supplier_id'] ?? 1);
+        $invoiceRef = trim($_POST['invoice_reference'] ?? '');
+        $notes      = trim($_POST['notes'] ?? '');
+        $itemsData  = $_POST['items'] ?? [];
 
-        if (empty($supplierName)) {
-            set_flash('error', 'Supplier name is required.');
+        if ($supplierId <= 0) {
+            set_flash('error', 'Please select a valid supplier or internal production store.');
             header("Location: {$appBase}/menu/grn.php");
             exit;
         }
@@ -94,33 +138,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = process_grn_receipt(
                 $pdo,
                 $currentUserId,
-                $supplierName,
+                $supplierId,
                 $invoiceRef,
                 $notes,
                 $itemsData
             );
 
-            set_flash('success', "Goods Received Note #{$result['grn_number']} processed successfully! Received {$result['items_count']} items (Total: " . format_price($result['total_cost']) . "). Master inventory updated.");
+            $receiptTypeLabel = $result['is_internal'] ? 'Production Receipt' : 'Goods Received Note';
+            set_flash('success', "{$receiptTypeLabel} #{$result['grn_number']} processed successfully! Received {$result['items_count']} items (Total: " . format_price($result['total_cost']) . "). Master kitchen inventory updated.");
             header("Location: {$appBase}/menu/grn.php?view_id=" . $result['grn_id']);
             exit;
         } catch (Exception $e) {
-            set_flash('error', 'GRN Submission Error: ' . $e->getMessage());
+            set_flash('error', 'Receipt Processing Error: ' . $e->getMessage());
             header("Location: {$appBase}/menu/grn.php");
             exit;
         }
     }
 }
 
-// 4. Fetch specific GRN for Voucher / Print View if ?view_id is specified
+// 5. Fetch specific GRN for Voucher / Print View if ?view_id is specified
 $viewGrn = null;
 $viewGrnItems = [];
 if (isset($_GET['view_id'])) {
     $viewId = (int)$_GET['view_id'];
     $grnStmt = $pdo->prepare("
-        SELECT g.*, u.full_name AS received_by_name, r.name AS role_name
+        SELECT g.*, u.full_name AS received_by_name, r.name AS role_name,
+               s.code AS supplier_code, s.category AS supplier_category, s.contact_person, s.phone AS supplier_phone
         FROM grn_headers g
         JOIN users u ON g.received_by_user_id = u.id
         LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN suppliers s ON g.supplier_id = s.id
         WHERE g.id = :id
         LIMIT 1
     ");
@@ -166,38 +213,49 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
             </span>
             <h1 style="font-size: 2rem; margin-top: 0.25rem;">Goods Received Notes (GRN)</h1>
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">
-                Official supplier receipt documentation. Inward deliveries update real-time kitchen inventory and audit logs.
+                Official procurement and internal production receipts. Inward batches update kitchen inventory in real-time.
             </p>
         </div>
-        <div style="display: flex; gap: 0.75rem;">
-            <a href="<?= $appBase ?>/menu/stock.php" class="btn btn-secondary">📦 Inventory Dashboard</a>
-            <a href="<?= $appBase ?>/menu/manage_dishes.php" class="btn btn-outline">🍲 Dishes Catalogue</a>
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('quickAddDishModal').style.display='flex';">
-                ✨ + Register New Dish in DB
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <a href="<?= $appBase ?>/menu/suppliers.php" class="btn btn-primary" style="background: #0284c7; border-color: #0284c7;">🚚 Supplier Master</a>
+            <a href="<?= $appBase ?>/menu/adjustment_notes.php" class="btn btn-secondary">📝 Stock Adjustment Notes</a>
+            <a href="<?= $appBase ?>/menu/stock.php" class="btn btn-outline">📦 Inventory Dashboard</a>
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('quickAddDishModal').style.display='flex';">
+                ✨ + Register New Dish
             </button>
         </div>
     </div>
 
     <!-- GRN Voucher / Printable Receipt View (Shown when ?view_id is set) -->
     <?php if ($viewGrn): ?>
-        <div style="background: white; border: 2px solid var(--color-primary); border-radius: var(--radius-lg); padding: 2.5rem; margin-bottom: 3rem; box-shadow: var(--shadow-md);">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px dashed var(--border-color); padding-bottom: 1.5rem; margin-bottom: 1.5rem;">
+        <?php
+        $isInternalView = ((int)$viewGrn['supplier_id'] === 1 || ($viewGrn['supplier_category'] ?? '') === 'internal');
+        ?>
+        <div style="background: white; border: 2px solid <?= $isInternalView ? '#16a34a' : 'var(--color-primary)' ?>; border-radius: var(--radius-lg); padding: 2.5rem; margin-bottom: 3rem; box-shadow: var(--shadow-md);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px dashed var(--border-color); padding-bottom: 1.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
                 <div>
-                    <span style="display: inline-block; background: #e0f2fe; color: #0369a1; font-size: 0.75rem; font-weight: 800; padding: 0.35rem 0.75rem; border-radius: 999px; text-transform: uppercase;">
-                        Official Inventory Document
-                    </span>
-                    <h2 style="font-size: 1.85rem; margin-top: 0.5rem; color: var(--color-secondary);">Goods Received Note Voucher</h2>
+                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="display: inline-block; background: <?= $isInternalView ? '#dcfce7' : '#e0f2fe' ?>; color: <?= $isInternalView ? '#15803d' : '#0369a1' ?>; font-size: 0.75rem; font-weight: 800; padding: 0.35rem 0.75rem; border-radius: 999px; text-transform: uppercase;">
+                            <?= $isInternalView ? '🏭 Goods Received from Production' : '🚚 External Vendor Delivery' ?>
+                        </span>
+                        <span style="display: inline-block; background: #f1f5f9; color: #475569; font-size: 0.75rem; font-weight: 700; padding: 0.35rem 0.65rem; border-radius: 999px;">
+                            Official Inward Voucher
+                        </span>
+                    </div>
+                    <h2 style="font-size: 1.85rem; margin: 0 0 0.25rem 0; color: var(--color-secondary);">
+                        <?= $isInternalView ? 'Production Inward Transfer Voucher' : 'Goods Received Note Voucher' ?>
+                    </h2>
                     <p style="font-size: 0.9rem; color: var(--text-muted); margin: 0;">UrbanEats Cloud Kitchen Platform • Colombo Central Kitchen Hub</p>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 800; color: var(--color-primary);">
+                    <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 800; color: <?= $isInternalView ? '#16a34a' : 'var(--color-primary)' ?>;">
                         <?= e($viewGrn['grn_number']) ?>
                     </div>
                     <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
-                        Date: <strong><?= format_datetime($viewGrn['received_at']) ?></strong>
+                        Receipt Date: <strong><?= format_datetime($viewGrn['received_at']) ?></strong>
                     </div>
                     <button type="button" class="btn btn-outline-sm" style="margin-top: 0.5rem;" onclick="window.print();">
-                        🖨️ Print GRN Voucher
+                        🖨️ Print Official Voucher
                     </button>
                 </div>
             </div>
@@ -205,26 +263,39 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
             <!-- Meta Details Grid -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; background: var(--bg-page); padding: 1.25rem; border-radius: var(--radius-md);">
                 <div>
-                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Supplier / Vendor:</span>
-                    <div style="font-size: 1.05rem; font-weight: 700; color: var(--color-secondary);"><?= e($viewGrn['supplier_name']) ?></div>
+                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
+                        <?= $isInternalView ? 'Production Source / Store:' : 'Supplier / Vendor:' ?>
+                    </span>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: var(--color-secondary);">
+                        <?= e($viewGrn['supplier_name']) ?>
+                    </div>
+                    <?php if (!empty($viewGrn['supplier_code'])): ?>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">(<?= e($viewGrn['supplier_code']) ?>)</span>
+                    <?php endif; ?>
                 </div>
                 <div>
-                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Delivery / Invoice Ref:</span>
-                    <div style="font-size: 1.05rem; font-weight: 600;"><?= e($viewGrn['invoice_reference'] ?: 'N/A') ?></div>
+                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">
+                        <?= $isInternalView ? 'Production Batch / Ticket Ref:' : 'Delivery / Invoice Ref:' ?>
+                    </span>
+                    <div style="font-size: 1.05rem; font-weight: 600;">
+                        <?= e($viewGrn['invoice_reference'] ?: 'Standard Production Run') ?>
+                    </div>
                 </div>
                 <div>
                     <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Received & Inspected By:</span>
                     <div style="font-size: 1.05rem; font-weight: 600;"><?= e($viewGrn['received_by_name']) ?> (<?= ucfirst($viewGrn['role_name'] ?? 'Staff') ?>)</div>
                 </div>
                 <div>
-                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Total Purchase Cost:</span>
-                    <div style="font-size: 1.25rem; font-weight: 800; color: var(--color-primary);"><?= format_price($viewGrn['total_cost']) ?></div>
+                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">Total Inward Cost Valuation:</span>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: <?= $isInternalView ? '#16a34a' : 'var(--color-primary)' ?>;">
+                        <?= format_price($viewGrn['total_cost']) ?>
+                    </div>
                 </div>
             </div>
 
             <?php if (!empty($viewGrn['notes'])): ?>
                 <div style="margin-bottom: 1.5rem; padding: 0.75rem 1rem; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: var(--radius-sm); font-size: 0.9rem;">
-                    <strong>Inspection Notes:</strong> <?= e($viewGrn['notes']) ?>
+                    <strong><?= $isInternalView ? 'Production & QA Notes:' : 'Inspection Notes:' ?></strong> <?= e($viewGrn['notes']) ?>
                 </div>
             <?php endif; ?>
 
@@ -233,7 +304,7 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Delivered Dish</th>
+                        <th>Delivered / Cooked Dish</th>
                         <th>Category</th>
                         <th>Batch / Lot No</th>
                         <th>Expiry Date</th>
@@ -260,14 +331,16 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
                 <tfoot>
                     <tr style="background: #f8fafc; font-size: 1.05rem;">
                         <th colspan="7" style="text-align: right; font-weight: 800;">Grand Total Inward Value:</th>
-                        <th style="text-align: right; font-weight: 800; color: var(--color-primary);"><?= format_price($viewGrn['total_cost']) ?></th>
+                        <th style="text-align: right; font-weight: 800; color: <?= $isInternalView ? '#16a34a' : 'var(--color-primary)' ?>;">
+                            <?= format_price($viewGrn['total_cost']) ?>
+                        </th>
                     </tr>
                 </tfoot>
             </table>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; flex-wrap: wrap; gap: 1rem;">
                 <div style="font-size: 0.85rem; color: var(--text-muted);">
-                    ✔ Inventory balances have been atomically updated in <code>inventory</code> & <code>stock_movements</code>.
+                    ✔ Inventory balances have been atomically credited in <code>inventory</code> & audited in <code>stock_movements</code>.
                 </div>
                 <a href="<?= $appBase ?>/menu/grn.php" class="btn btn-secondary">Create Another GRN</a>
             </div>
@@ -276,10 +349,10 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
 
     <!-- GRN Creation Form Card -->
     <div style="background: white; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 2rem; margin-bottom: 3rem; box-shadow: var(--shadow-sm);">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
             <div>
-                <h2 style="font-size: 1.35rem; margin: 0; color: var(--color-secondary);">Create New Goods Received Note</h2>
-                <span style="font-size: 0.85rem; color: var(--text-muted);">Document supplier inward delivery and restock kitchen inventory</span>
+                <h2 style="font-size: 1.35rem; margin: 0; color: var(--color-secondary);">Record Inward Delivery / Production Receipt</h2>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Document supplier inward shipment or freshly prepped kitchen batch</span>
             </div>
             <div style="font-size: 0.9rem; font-weight: 700; color: var(--color-primary); background: var(--bg-page); padding: 0.5rem 1rem; border-radius: var(--radius-md);">
                 Generated Document #: <code><?= $nextGrnNumberPreview ?></code>
@@ -291,32 +364,67 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
             <input type="hidden" name="action" value="create_grn">
 
             <!-- Supplier & Header Info Row -->
-            <div class="form-row">
-                <div class="form-group" style="flex: 1.5;">
-                    <label for="supplier_name" class="form-label">Supplier / Farm / Vendor Name <span class="required">*</span></label>
-                    <input type="text" id="supplier_name" name="supplier_name" class="form-control" placeholder="e.g. Ceylon Agro Poultry Ltd, Jaffna Fisheries Union" required>
+            <div class="form-row" style="align-items: flex-end;">
+                <div class="form-group" style="flex: 2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                        <label for="supplier_id" class="form-label" style="margin: 0;">Supplier / Production Source <span class="required">*</span></label>
+                        <a href="<?= $appBase ?>/menu/suppliers.php" target="_blank" style="font-size: 0.75rem; color: var(--color-primary); font-weight: 600; text-decoration: none;">View Supplier Master ↗</a>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <select id="supplier_id" name="supplier_id" class="form-control" required onchange="handleSupplierChange()">
+                            <?php foreach ($allSuppliers as $sup): ?>
+                                <?php $isInternalSup = ((int)$sup['id'] === 1 || $sup['category'] === 'internal'); ?>
+                                <option value="<?= $sup['id'] ?>" 
+                                        data-category="<?= $sup['category'] ?>" 
+                                        data-code="<?= e($sup['code']) ?>"
+                                        data-name="<?= e($sup['name']) ?>"
+                                        <?= ((int)$sup['id'] === 1) ? 'selected' : '' ?>>
+                                    <?= $isInternalSup ? '🏭 ' : '🚚 ' ?><?= e($sup['name']) ?> (<?= e($sup['code']) ?>) [<?= ucfirst($sup['category']) ?>]
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="btn btn-outline" style="white-space: nowrap;" onclick="document.getElementById('quickAddSupplierModal').style.display='flex';">
+                            + New
+                        </button>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="invoice_reference" class="form-label">Delivery Note / Invoice Ref #</label>
-                    <input type="text" id="invoice_reference" name="invoice_reference" class="form-control" placeholder="e.g. INV-2026-9041">
+                <div class="form-group" style="flex: 1.2;">
+                    <label for="invoice_reference" class="form-label" id="invoiceRefLabel">Production Batch / Job Ticket #</label>
+                    <input type="text" id="invoice_reference" name="invoice_reference" class="form-control" placeholder="e.g. PROD-BATCH-501 or Shift-A-Prep">
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Receiving Staff Officer</label>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Receiving Officer</label>
                     <input type="text" class="form-control" value="<?= e($currentUser['name']) ?> (<?= ucfirst($currentUser['role_name'] ?? 'Staff') ?>)" disabled style="background: #f1f5f9;">
                 </div>
             </div>
 
+            <!-- Dynamic Mode Indicator Banner -->
+            <div id="supplierModeBanner" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: var(--radius-md); padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span id="modeIcon" style="font-size: 1.5rem;">🏭</span>
+                    <div>
+                        <strong id="modeTitle" style="color: #166534; font-size: 0.95rem;">Goods Received from Production (Internal Central Kitchen)</strong>
+                        <p id="modeDesc" style="font-size: 0.8rem; color: #15803d; margin: 0.15rem 0 0 0;">
+                            Documenting freshly prepped batches arriving directly from internal kitchen stations into available stock.
+                        </p>
+                    </div>
+                </div>
+                <span id="modeBadge" style="background: #22c55e; color: white; font-size: 0.75rem; font-weight: 800; padding: 0.25rem 0.65rem; border-radius: 999px; text-transform: uppercase; white-space: nowrap;">
+                    Internal Transfer
+                </span>
+            </div>
+
             <div class="form-group">
-                <label for="notes" class="form-label">Delivery Condition & Inspection Notes</label>
-                <input type="text" id="notes" name="notes" class="form-control" placeholder="e.g. Temperature checked below 4°C, freshness approved, packaging intact.">
+                <label for="notes" class="form-label" id="notesLabel">Production & Sensory Evaluation Remarks</label>
+                <input type="text" id="notes" name="notes" class="form-control" placeholder="e.g. Morning cooking shift batch. Sensory tasting approved by Executive Chef.">
             </div>
 
             <!-- Multi-Item Line Table -->
             <div style="margin-top: 2rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="font-size: 1.15rem; margin: 0; color: var(--color-secondary);">Received Dish Items & Ingredients</h3>
-                <span style="font-size: 0.85rem; color: var(--text-muted);">Add as many items as needed for this delivery batch</span>
+                <h3 style="font-size: 1.15rem; margin: 0; color: var(--color-secondary);">Received Dish Items & Quantities</h3>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Add all dishes included in this inward batch</span>
             </div>
 
             <div class="data-table-container" style="margin-bottom: 1rem;">
@@ -374,8 +482,8 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
             </div>
 
             <div style="display: flex; gap: 1rem;">
-                <button type="submit" class="btn btn-primary btn-lg">
-                    💾 Confirm & Post Goods Received Note (GRN)
+                <button type="submit" class="btn btn-primary btn-lg" id="grnSubmitBtn">
+                    📥 Post Goods Received from Production (Update Stock)
                 </button>
                 <a href="<?= $appBase ?>/menu/stock.php" class="btn btn-outline btn-lg">Cancel</a>
             </div>
@@ -397,8 +505,8 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
                 <tr>
                     <th>GRN Document #</th>
                     <th>Date Received</th>
-                    <th>Supplier / Vendor</th>
-                    <th>Invoice / Ref #</th>
+                    <th>Supplier / Source</th>
+                    <th>Invoice / Batch #</th>
                     <th>Receiving Officer</th>
                     <th>Items / Units</th>
                     <th>Total Value (LKR)</th>
@@ -421,7 +529,12 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
                             <td style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">
                                 <?= format_datetime($grn['received_at']) ?>
                             </td>
-                            <td><strong><?= e($grn['supplier_name']) ?></strong></td>
+                            <td>
+                                <?php if ((int)$grn['supplier_id'] === 1): ?>
+                                    <span style="background: #dcfce7; color: #15803d; font-size: 0.75rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px;">🏭 Production</span>
+                                <?php endif; ?>
+                                <strong><?= e($grn['supplier_name']) ?></strong>
+                            </td>
                             <td><code><?= e($grn['invoice_reference'] ?: '-') ?></code></td>
                             <td><?= e($grn['received_by_name']) ?></td>
                             <td>
@@ -443,7 +556,7 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
     </div>
 </div>
 
-<!-- Modal: Quick Register New Dish to Database -->
+<!-- Modal 1: Quick Register New Dish to Database -->
 <div id="quickAddDishModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 1.5rem;">
     <div style="background: white; border-radius: var(--radius-lg); max-width: 600px; width: 100%; padding: 2rem; box-shadow: var(--shadow-lg);">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem;">
@@ -495,8 +608,112 @@ $nextGrnNumberPreview = generate_grn_number($pdo);
     </div>
 </div>
 
+<!-- Modal 2: Quick Register New Supplier -->
+<div id="quickAddSupplierModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 1.5rem;">
+    <div style="background: white; border-radius: var(--radius-lg); max-width: 550px; width: 100%; padding: 2rem; box-shadow: var(--shadow-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+            <h3 style="margin: 0; font-size: 1.25rem; color: var(--color-secondary);">Register New Vendor in Supplier Master</h3>
+            <button type="button" class="btn btn-outline-sm" onclick="document.getElementById('quickAddSupplierModal').style.display='none';">✕</button>
+        </div>
+
+        <form action="<?= $appBase ?>/menu/grn.php" method="POST">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="quick_add_supplier">
+
+            <div class="form-group">
+                <label for="new_supplier_name" class="form-label">Supplier / Farm / Distributor Name <span class="required">*</span></label>
+                <input type="text" id="new_supplier_name" name="new_supplier_name" class="form-control" placeholder="e.g. Ceylon Highland Farms Ltd" required>
+            </div>
+
+            <div class="form-group">
+                <label for="new_supplier_cat" class="form-label">Classification</label>
+                <select id="new_supplier_cat" name="new_supplier_cat" class="form-control">
+                    <option value="external" selected>External Vendor / Distributor</option>
+                    <option value="internal">Internal Store / Production Hub</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="new_supplier_contact" class="form-label">Contact Person</label>
+                    <input type="text" id="new_supplier_contact" name="new_supplier_contact" class="form-control" placeholder="e.g. Nimal Fernando">
+                </div>
+                <div class="form-group">
+                    <label for="new_supplier_phone" class="form-label">Phone Number</label>
+                    <input type="text" id="new_supplier_phone" name="new_supplier_phone" class="form-control" placeholder="e.g. +94112890123">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Save & Add to Suppliers</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('quickAddSupplierModal').style.display='none';">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 let rowIndex = 1;
+
+function handleSupplierChange() {
+    const select = document.getElementById('supplier_id');
+    const selectedOption = select.options[select.selectedIndex];
+    const category = selectedOption.getAttribute('data-category');
+    const supId = parseInt(select.value);
+    const supName = selectedOption.getAttribute('data-name');
+
+    const banner = document.getElementById('supplierModeBanner');
+    const icon = document.getElementById('modeIcon');
+    const title = document.getElementById('modeTitle');
+    const desc = document.getElementById('modeDesc');
+    const badge = document.getElementById('modeBadge');
+    const refLabel = document.getElementById('invoiceRefLabel');
+    const refInput = document.getElementById('invoice_reference');
+    const notesLabel = document.getElementById('notesLabel');
+    const notesInput = document.getElementById('notes');
+    const submitBtn = document.getElementById('grnSubmitBtn');
+
+    if (supId === 1 || category === 'internal') {
+        // Mode 1: Goods Received from Production (Internal Central Kitchen)
+        banner.style.background = '#f0fdf4';
+        banner.style.borderColor = '#86efac';
+        icon.textContent = '🏭';
+        title.textContent = 'Goods Received from Production (Internal Central Kitchen)';
+        title.style.color = '#166534';
+        desc.textContent = 'Documenting freshly prepared dishes arriving directly from central kitchen production stations into available stock.';
+        desc.style.color = '#15803d';
+        badge.textContent = 'Internal Transfer';
+        badge.style.background = '#22c55e';
+        
+        refLabel.textContent = 'Production Batch / Kitchen Job Ticket #';
+        refInput.placeholder = 'e.g. PROD-BATCH-501 or Shift-A-Prep';
+        notesLabel.textContent = 'Production & Sensory Evaluation Remarks';
+        notesInput.placeholder = 'e.g. Morning cooking shift batch. Sensory tasting approved by Executive Chef.';
+        submitBtn.innerHTML = '📥 Post Goods Received from Production (Update Stock)';
+    } else {
+        // Mode 2: External Supplier Procurement Receipt
+        banner.style.background = '#f0f9ff';
+        banner.style.borderColor = '#bae6fd';
+        icon.textContent = '🚚';
+        title.textContent = 'External Supplier Procurement: ' + supName;
+        title.style.color = '#0369a1';
+        desc.textContent = 'Recording official vendor delivery. Verify that quantity, temperatures, and physical items match invoice.';
+        desc.style.color = '#0284c7';
+        badge.textContent = 'External Vendor';
+        badge.style.background = '#0284c7';
+
+        refLabel.textContent = 'Vendor Invoice / Delivery Note #';
+        refInput.placeholder = 'e.g. INV-CAG-8921 or DN-4410';
+        notesLabel.textContent = 'Receiving Condition & Inspection Notes';
+        notesInput.placeholder = 'e.g. Temperature checked below 4°C, freshness approved, packaging intact.';
+        submitBtn.innerHTML = '💾 Confirm & Post Goods Received Note (GRN)';
+    }
+}
+
+// Trigger initial dynamic banner setup on page load
+document.addEventListener('DOMContentLoaded', function() {
+    handleSupplierChange();
+});
 
 function addGrnRow() {
     const tableBody = document.getElementById('grnItemsBody');
