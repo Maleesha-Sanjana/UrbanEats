@@ -1,12 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Component A: User Login Page
- *
- * Implements login throttling (5 failed attempts lock),
- * secure password verification via password_verify(),
- * session regeneration on success, and CSRF protection.
- */
 
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../includes/errors.php';

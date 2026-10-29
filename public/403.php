@@ -1,8 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * 403 Forbidden - Access Denied Page
- */
 
 $pageTitle = '403 - Access Denied';
 http_response_code(403);

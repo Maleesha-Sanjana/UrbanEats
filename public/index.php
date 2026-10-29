@@ -1,8 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform
- * Landing Page & Menu Showcase
- */
 
 $currentPage = 'home';
 $pageTitle = 'UrbanEats - Sri Lanka\'s Premier Cloud Kitchen';

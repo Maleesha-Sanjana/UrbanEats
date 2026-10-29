@@ -97,23 +97,12 @@ function render_flash_messages(): string {
 }
 
 /* ==========================================================================
-   COMPONENT B SHARED CONTRACT FUNCTIONS (Menu & Inventory)
-   Student 2: Denuka (Component B Owner)
+   Menu & Inventory Functions
    ========================================================================== */
 
 /**
  * Transaction-Safe Stock Deduction
- * Component C calls this contract function at checkout.
- * 
- * VIVA QUESTIONS & EXPLANATIONS:
- * 1. Why conditional UPDATE instead of read-then-write?
- *    If we did `SELECT stock` then `if (stock >= qty) UPDATE stock`, two concurrent requests
- *    could both read stock = 1 simultaneously, both pass the check, and both decrement,
- *    causing stock to drop to -1 (race condition / overselling).
- * 2. How does atomic conditional UPDATE fix this?
- *    The query `WHERE dish_id = :dish_id AND current_stock >= :min_qty` is executed under MySQL
- *    row-level lock. Only the first transaction decrements and gets rowCount = 1; the second transaction
- *    sees current_stock < min_qty, gets rowCount = 0, and triggers an exception that rolls back the order.
+ * Executes atomic conditional decrement to prevent race conditions and overselling.
  *
  * @param PDO $pdo Active PDO connection with ongoing transaction
  * @param int $dishId Dish primary key
@@ -177,7 +166,6 @@ function record_stock_movement(
 
 /**
  * Generate Next Sequential GRN Number (e.g. GRN-20261027-1005)
- * Student 2: Denuka (Component B Owner)
  */
 function generate_grn_number(PDO $pdo): string {
     $todayPrefix = 'GRN-' . date('Ymd') . '-';
@@ -197,7 +185,6 @@ function generate_grn_number(PDO $pdo): string {
 
 /**
  * Process and record an official Goods Received Note (GRN)
- * Student 2: Denuka (Component B Owner)
  *
  * Executes inside an atomic transaction:
  * - Validates supplier details and received items
@@ -357,19 +344,9 @@ function process_grn_receipt(
 
 /**
  * Secure image upload helper for dishes
- * Student 2: Denuka (Component B Owner)
  *
- * VIVA QUESTIONS & EXPLANATIONS:
- * 1. What checks does image upload perform?
- *    - Checks PHP upload error codes (ensures partial/corrupted uploads are rejected).
- *    - Enforces maximum file size limit (2MB) preventing denial-of-service via huge payloads.
- *    - Server-side MIME type verification using PHP's `finfo(FILEINFO_MIME_TYPE)`.
- *    - File extension check against a strict whitelist (jpg, jpeg, png, webp).
- *    - Generates a cryptographically random, unguessable filename (`random_bytes(16)`).
- * 2. Why is file extension alone not enough?
- *    An attacker could rename a malicious executable PHP script (e.g. `shell.php` -> `shell.jpg`).
- *    Checking extension alone would accept it, which could lead to remote code execution (RCE).
- *    Using `finfo` inspects magic bytes at the start of the binary file to verify it is genuinely an image.
+ * Validates file size, checks MIME type via finfo, enforces extension whitelist,
+ * and generates a cryptographically random filename.
  */
 function upload_dish_image(array $file): array {
     if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -432,7 +409,7 @@ function upload_dish_image(array $file): array {
 }
 
 /* ==========================================================================
-   COMPONENT C SHARED CONTRACT FUNCTIONS (Cart, Orders, Workflow)
+   Cart, Orders & Workflow Functions
    ========================================================================== */
 
 /**

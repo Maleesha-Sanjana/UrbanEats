@@ -1,15 +1,4 @@
 <?php
-/**
- * UrbanEats Cloud Kitchen Platform - Database Reset & Migration Utility
- * Student 2: Denuka (Component B Owner)
- *
- * This utility allows teammates and evaluators to completely reset, purge old/conflicting data,
- * and re-seed fresh, 100% consistent normalized tables (including all new GRN tables).
- *
- * Usage:
- *   CLI: php database/reset_db.php
- *   Web: http://localhost:8080/UrbanEats/database/reset_db.php (Admin / Staff only)
- */
 
 require_once __DIR__ . '/../config/db.php';
 
